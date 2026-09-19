@@ -32,14 +32,15 @@ type owner struct {
 }
 
 type fileWalk struct {
-	fset    *token.FileSet
-	file    *token.File
-	src     []byte
-	owners  map[*ast.CommentGroup]owner
-	blocks  []block
-	scopes  []owner // enclosing declarations, for Context
-	groups  []*ast.CommentGroup
-	options extract.Options
+	fset         *token.FileSet
+	file         *token.File
+	src          []byte
+	owners       map[*ast.CommentGroup]owner
+	blocks       []block
+	scopes       []owner // enclosing declarations, for Context
+	groups       []*ast.CommentGroup
+	commentSpans []core.Span
+	options      extract.Options
 }
 
 func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.Finding, error) {
@@ -58,6 +59,9 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 		options: opts,
 	}
 	w.collect(parsed)
+	for _, group := range parsed.Comments {
+		w.commentSpans = append(w.commentSpans, core.Span{Start: w.offset(group.Pos()), End: w.offset(group.End())})
+	}
 
 	var findings []core.Finding
 	for _, group := range parsed.Comments {
@@ -264,25 +268,12 @@ func (w *fileWalk) commentBetween(from, to token.Pos) bool {
 	return false
 }
 
-// context is the enclosing declaration with every comment stripped and the
-// paired code delimited, capped to the configured line budget.
 func (w *fileWalk) context(group *ast.CommentGroup, code core.Span) string {
 	scope, ok := w.enclosing(group.Pos(), code)
 	if !ok {
 		return ""
 	}
-	start, end := w.offset(scope.start), w.offset(scope.end)
-	if code.Start < start || code.End > end {
-		return ""
-	}
-
-	var b strings.Builder
-	b.Write(w.stripComments(start, code.Start))
-	b.WriteString(">>> CODE\n")
-	b.Write(w.src[code.Start:code.End])
-	b.WriteString("\n<<< CODE\n")
-	b.Write(w.stripComments(code.End, end))
-	return capContext(b.String(), w.options.ContextLines)
+	return extract.Context(w.src, core.Span{Start: w.offset(scope.start), End: w.offset(scope.end)}, code, w.commentSpans, w.options.ContextLines)
 }
 
 func (w *fileWalk) enclosing(pos token.Pos, code core.Span) (owner, bool) {
@@ -296,44 +287,6 @@ func (w *fileWalk) enclosing(pos token.Pos, code core.Span) (owner, bool) {
 		}
 	}
 	return found, ok
-}
-
-func (w *fileWalk) stripComments(start, end int) []byte {
-	out := make([]byte, 0, end-start)
-	cursor := start
-	for _, group := range w.groups {
-		gs, ge := w.offset(group.Pos()), w.offset(group.End())
-		if ge <= cursor || gs >= end {
-			continue
-		}
-		if gs > cursor {
-			out = append(out, w.src[cursor:min(gs, end)]...)
-		}
-		cursor = max(cursor, min(ge, end))
-	}
-	if cursor < end {
-		out = append(out, w.src[cursor:end]...)
-	}
-	return out
-}
-
-// capContext keeps the marked code and as much of its surroundings as the line
-// budget allows, trimming the far ends first.
-func capContext(text string, limit int) string {
-	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
-	if len(lines) <= limit {
-		return strings.Join(lines, "\n")
-	}
-	mark := 0
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), ">>> CODE") {
-			mark = i
-			break
-		}
-	}
-	start := max(0, mark-limit/2)
-	end := min(len(lines), start+limit)
-	return strings.Join(lines[start:end], "\n")
 }
 
 func (w *fileWalk) text(start, end token.Pos, maxLines int) (string, core.Span) {
