@@ -102,7 +102,7 @@ Two verbs plus housekeeping, built on cobra. `check` never writes; `fix` writes 
 | `scrutus fix [paths]` | Score, delete useless comments, report the rest | Pre-commit, local cleanup |
 | `scrutus baseline [paths]` | Write current findings to `baseline.json` so they stop failing | Adopting on a legacy repo |
 | `scrutus cache {clear,stats}` | Manage the local verdict cache | Debugging |
-| `scrutus version` | Print version, rubric version, Jev model id, compiled language set | Bug reports |
+| `scrutus version` | Print version, the commit or module version it was built from, rubric version, Jev model id, compiled language set | Bug reports |
 
 **Shared flags**
 

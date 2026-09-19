@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -223,12 +224,36 @@ func cacheCmd(opts *scrutus.Options) *cobra.Command {
 func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print version, rubric version, model and compiled languages",
+		Short: "Print version, build, rubric version, model and compiled languages",
 		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "scrutus %s\nrubric 1\nmodel %s\nlanguages %s\n",
-				scrutus.Version, typesafe.DefaultModel, strings.Join(extract.Languages(), ", "))
+			fmt.Fprintf(cmd.OutOrStdout(), "scrutus %s\nbuild %s\nrubric 1\nmodel %s\nlanguages %s\n",
+				scrutus.Version, build(), typesafe.DefaultModel, strings.Join(extract.Languages(), ", "))
 		},
 	}
+}
+
+// build names the commit a binary came from, which the fixed Version cannot
+// while releases are rebuilt from every push: the revision go build stamps
+// from a checkout, else the module version go install resolved.
+func build() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	settings := map[string]string{}
+	for _, s := range info.Settings {
+		settings[s.Key] = s.Value
+	}
+	if revision := settings["vcs.revision"]; revision != "" {
+		if settings["vcs.modified"] == "true" {
+			revision += "-dirty"
+		}
+		return revision
+	}
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "unknown"
 }
 
 func configOrDefaults(path string) (config.Config, error) {
