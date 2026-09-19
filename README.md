@@ -13,9 +13,22 @@ is deleted.
 > sources are supported; see the
 > [implementation status](docs/design_spec.0.1.md#124-implementation-status).
 
-## Quickstart
+## Install
 
-Install scrutus (Go 1.26 or newer):
+Download the binary for your platform from the
+[`edge` release](https://github.com/SergeAx/scrutus/releases/tag/edge): Linux
+and macOS on amd64 and arm64, Windows on amd64. Until versioned releases start,
+it is rebuilt from every push to `master`; `scrutus version` names the commit.
+Each binary carries signed build provenance, which the GitHub CLI checks:
+
+```sh
+gh attestation verify scrutus-linux-amd64 -R SergeAx/scrutus
+```
+
+The macOS binaries are not notarized, so clear the quarantine flag a browser
+download sets: `xattr -d com.apple.quarantine scrutus-darwin-arm64`.
+
+Or build from source with Go 1.26 or newer:
 
 ```sh
 go install github.com/SergeAx/scrutus/cmd/scrutus@latest
@@ -25,6 +38,8 @@ JavaScript, TypeScript and Python are parsed by tree-sitter, which is C, so
 `go install` compiles them in only when a C compiler is on your `PATH`;
 without one you get Go and PHP. `scrutus version` lists the languages a binary
 carries.
+
+## Quickstart
 
 Set `TYPESAFE_API_KEY` in your environment, or put it in a `.env` file in the
 working directory or next to the executable. Then preview what scrutus would

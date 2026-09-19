@@ -528,7 +528,7 @@ Users without a Jev key locally can set `entry: scrutus check --staged --soft-fa
 
 **GitLab CI, Jenkins.** `--format checkstyle` plus the standard code-quality artifact; no first-party wrapper in v0.1.
 
-**Release.** `goreleaser` builds static binaries for linux/darwin/windows on amd64 and arm64, plus a Docker image `ghcr.io/<org>/scrutus`, plus `go install` support. The pre-commit `language: golang` path builds from source, so `go.mod` must stay `go install`-clean (no replace directives, no cgo).
+**Release.** `.github/workflows/build.yml` builds cgo binaries on a GitHub runner of each target's own OS: linux amd64 and arm64, statically linked so one binary runs on any libc; darwin arm64 and amd64, both from one macOS runner whose clang carries both archs; windows amd64. Cross-compiling instead would need a C toolchain per target for tree-sitter, which goreleaser's free edition leaves to a heavy osxcross image. Every binary gets a Sigstore-signed SLSA provenance attestation from `actions/attest-build-provenance`, checked with `gh attestation verify`. Until versioning starts, each push to `master` replaces the assets of a rolling `edge` prerelease and `scrutus version` names the commit; a `v*` tag publishes a release. A Docker image `ghcr.io/<org>/scrutus` is still planned. The pre-commit `language: golang` path builds from source, so `go.mod` must stay `go install`-clean (no replace directives, no cgo requirement).
 
 ## 11. Go module layout
 
@@ -568,7 +568,7 @@ scrutus/
 | TS/JS/Python parsing | `smacker/go-tree-sitter` | One API and shipped grammars, at the price of cgo |
 | Cache | `etcd-io/bbolt` | Single-file, transactional, pure Go |
 | Concurrency | `golang.org/x/sync/errgroup` | Bounded parallelism with error propagation |
-| Release | `goreleaser` | Cross-compile, checksums, Docker |
+| Release | GitHub Actions runners, `actions/attest-build-provenance` | Native cgo builds per OS with signed provenance, no cross toolchains |
 
 Four things the first draft planned to take from libraries are written here instead, because each turned out smaller than its dependency: SARIF 2.1.0 as plain structs, the `--diff` patch from the edit plan (§8), colour as ANSI codes gated on a TTY and `NO_COLOR`, and `**` glob matching for `ignore` as a pattern-to-regexp compiler. `go-gitignore` went with them: scope skips `.git` and friends and applies `ignore` globs, and anything finer belongs to the git-scoped modes.
 
@@ -620,7 +620,8 @@ The v0.1 code follows this document with the gaps below, each an addition rather
 | Annotation findings | Implemented end to end for PHP docblocks and JSDoc |
 | All six reporters, cache, baseline, profiles, `.env`, budget | Implemented |
 | `.gitignore` awareness, `--stdin-filename` | Not implemented |
-| pre-commit hooks, the GitHub action, goreleaser | Not packaged yet |
+| Release binaries | Built per push to `master` into the `edge` prerelease (§10) |
+| pre-commit hooks, the GitHub action, the Docker image | Not packaged yet |
 
 ### 12.5 v0.2 candidates
 

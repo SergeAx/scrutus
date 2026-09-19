@@ -1,0 +1,131 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "$unformatted"; exit 1; }
+      - name: vet and test without cgo
+        run: |
+          go vet ./...
+          go test ./...
+
+  # tree-sitter's grammars are C, so every target builds on a runner of its own
+  # OS; only macOS also cross-builds, since its clang carries both archs.
+  build:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, goos: linux, goarch: amd64 }
+          - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64 }
+          - { runner: macos-latest, goos: darwin, goarch: arm64 }
+          - { runner: macos-latest, goos: darwin, goarch: amd64, cc: clang -arch x86_64, cross: true }
+          - { runner: windows-latest, goos: windows, goarch: amd64 }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: "1"
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      BINARY: scrutus-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: C compiler
+        run: |
+          if [ -n "${{ matrix.cc }}" ]; then echo "CC=${{ matrix.cc }}" >> "$GITHUB_ENV"; fi
+          ${{ matrix.cc || 'gcc' }} --version
+      - name: vet and test with cgo
+        if: ${{ !matrix.cross }}
+        run: |
+          go vet ./...
+          go test ./...
+      - name: build
+        run: |
+          tags=() ldflags="-s -w"
+          if [ "$GOOS" = linux ]; then
+            # Static, so one binary runs on any distribution's libc.
+            tags=(-tags netgo,osusergo)
+            ldflags="$ldflags -linkmode external -extldflags -static"
+          fi
+          go build -trimpath "${tags[@]}" -ldflags "$ldflags" -o "dist/$BINARY" ./cmd/scrutus
+      - name: every language compiled in
+        if: ${{ !matrix.cross }}
+        run: |
+          "./dist/$BINARY" version | tee version.txt
+          grep -q "languages go, javascript, php, python, typescript" version.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.BINARY }}
+          path: dist/${{ env.BINARY }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: scrutus-*
+          merge-multiple: true
+      - name: checksums
+        working-directory: dist
+        run: sha256sum scrutus-* | tee SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/scrutus-*
+      - name: publish edge
+        if: github.ref == 'refs/heads/master'
+        run: |
+          notes="Built from $GITHUB_SHA. Replaced on every push to master; not a versioned release."
+          if gh release view edge > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/edge" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            gh release edit edge --prerelease --notes "$notes"
+          else
+            gh release create edge --prerelease --title edge --target "$GITHUB_SHA" --notes "$notes"
+          fi
+          gh release upload edge dist/* --clobber
+      - name: publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          flags=(--verify-tag --generate-notes)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}"
