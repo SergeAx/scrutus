@@ -212,7 +212,7 @@ Each `Extractor` yields a `Finding` per comment paired with the code it annotate
 | Language | Parser | Pairing rule |
 | --- | --- | --- |
 | Go | `go/ast` + `go/token` (`ast.CommentMap`) | Doc comment → the whole declaration (signature + body); inline → the paragraph that follows (see rules below); trailing → the statement on the same line |
-| TypeScript, JavaScript | `go-tree-sitter` | Leading comment on a declaration → the whole declaration; other leading comments → the paragraph that follows; trailing → the node on the same line |
+| TypeScript, JavaScript | `go-tree-sitter` | Leading comment on a declaration → the whole declaration; other leading comments → the paragraph that follows; trailing → the node on the same line. A declaration is a function, class, method, field, interface, type alias, enum, signature or namespace anywhere, or a variable outside function bodies; inside one, a comment above `const` heads a paragraph. A member's decorators belong to it. Paragraphs run over statements, class and interface members, and object, array, argument and parameter entries. `/// <reference>` directives are syntax and never extracted |
 | PHP | `VKCOM/php-parser` (pure Go) | A `/** */` docblock pairs with the following declaration, or with the statement below it when it sits in a body, which is where `/** @var Foo $bar */` lives; `#` line comments handled like `//` |
 | Python | `go-tree-sitter` | `#` comments follow the paragraph and trailing rules; a docstring — the first statement of a module, class or function — pairs with the whole declaration as `Kind: Doc` |
 
@@ -221,7 +221,7 @@ Rules shared across extractors:
 - **Paragraph rule (inline comments).** `CodeText` is the run of statements from the comment to the first of: a blank line, the next comment, or the end of the enclosing block. This matches how comments are written: a comment heads a visual chunk, not one line. Capped at 40 lines; longer paragraphs are truncated with a marker.
 - **Declaration rule (doc comments).** `CodeText` is the full declaration, signature and body, capped at 40 lines so the model sees the signature and the opening logic.
 - Spans are byte offsets, never line/column, so `fix` edits stay exact after earlier edits shift the file.
-- Consecutive `//` lines merge into one comment. A comment followed by a blank line and then code still pairs with that code's paragraph, with `Kind: Inline`.
+- Consecutive `//` or `#` lines merge into one comment; the tree-sitter extractors merge them only at one indentation, since a Python dedent ends the block they describe. A comment followed by a blank line and then code still pairs with that code's paragraph, with `Kind: Inline`.
 - A comment with nothing after it in its block (end-of-block, end-of-file) pairs with the preceding statement and is marked `Kind: Trailing`. These are graded rather than skipped, so the end of a block does not become a hiding place.
 - **Annotation rule (docblocks).** A PHP docblock or JSDoc block is split: its free text is one `Kind: Doc` finding, and each annotation tag line (`@param`, `@return`, `@var`, `@throws`) becomes its own `Kind: Annotation` finding paired with the same code. `min_chars` does not apply to annotation findings, which are short by design. Tool directives (`@phpstan-`, `@psalm-`, `@ts-`) stay exempt.
 - A Python docstring is extracted as a comment, quotes excluded from `CommentText`. One that is the only statement in its block is never a `Delete` candidate, since removing it would leave an empty body.
@@ -541,7 +541,7 @@ scrutus/
   internal/extract/              # Extractor interface + registry
   internal/extract/golang/       # go/ast
   internal/extract/php/          # VKCOM/php-parser, docblock splitting
-  internal/extract/treesitter/   # ts, js, php, python grammars
+  internal/extract/treesitter/   # ts, js, python grammars; registers only under cgo
   internal/filter/               # exemptions, suppressions, baseline, cache lookup
   internal/assess/               # Assessor interface, rubric loading, state assembly
   internal/assess/jev/           # SDK wiring, rubric to questions, cost
@@ -615,8 +615,9 @@ The v0.1 code follows this document with the gaps below, each an addition rather
 | `check`, `fix`, `baseline`, `cache`, `version` | Implemented, including exit codes (§7.3) and the CI write refusal (§8) |
 | Go extractor | Implemented: doc, inline, trailing, the paragraph rule, byte spans, stripped context |
 | PHP extractor | Implemented in pure Go, including docblock splitting into prose plus one finding per tag |
-| TS/JS/Python extractors | Not written. The build fails with exit 2 when the scope needs one of them (§11) |
-| Annotation findings | Implemented end to end for PHP docblocks; JSDoc follows with the TS/JS extractor |
+| TS/JS extractors | Implemented with tree-sitter in cgo builds; a parse error is a skipped file in `check` and `fix-aborted` in `fix` |
+| Python extractor | Not written. The build fails with exit 2 when the scope needs it (§11) |
+| Annotation findings | Implemented end to end for PHP docblocks and JSDoc |
 | All six reporters, cache, baseline, profiles, `.env`, budget | Implemented |
 | `.gitignore` awareness, `--stdin-filename` | Not implemented |
 | pre-commit hooks, the GitHub action, goreleaser | Not packaged yet |

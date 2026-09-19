@@ -24,6 +24,7 @@ import (
 	"github.com/SergeAx/scrutus/internal/extract"
 	_ "github.com/SergeAx/scrutus/internal/extract/golang"
 	_ "github.com/SergeAx/scrutus/internal/extract/php"
+	_ "github.com/SergeAx/scrutus/internal/extract/treesitter"
 	"github.com/SergeAx/scrutus/internal/filter"
 	"github.com/SergeAx/scrutus/internal/fix"
 	"github.com/SergeAx/scrutus/internal/report"
