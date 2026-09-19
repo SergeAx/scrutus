@@ -66,10 +66,10 @@ cache, the baseline, CI integrations or users' trust.
   finding.
 - `check` never writes. `fix` only deletes comments and re-parses the result
   before an atomic write.
-- `go.mod` stays `go install`-clean: no `replace` directives. Everything
-  beyond the Go extractor needs cgo, so a `CGO_ENABLED=0` build parses Go
-  only — and must exit 2, never skip files, when the scope needs an extractor
-  it does not carry.
+- `go.mod` stays `go install`-clean: no `replace` directives. Only the
+  tree-sitter extractors need cgo, so a `CGO_ENABLED=0` build parses Go and
+  PHP only — and must exit 2, never skip files, when the scope needs an
+  extractor it does not carry.
 
 ## Comments
 
