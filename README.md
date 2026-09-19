@@ -9,8 +9,8 @@ Each comment is paired with the code it describes and scored by
 The model only scores; fixed local thresholds decide what is reported and what
 is deleted.
 
-> **Status: v0.1, pre-release.** Go, PHP, JavaScript and TypeScript sources
-> are supported. The Python extractor is not written yet; see the
+> **Status: v0.1, pre-release.** Go, PHP, JavaScript, TypeScript and Python
+> sources are supported; see the
 > [implementation status](docs/design_spec.0.1.md#124-implementation-status).
 
 ## Quickstart
@@ -21,9 +21,9 @@ Install scrutus (Go 1.26 or newer):
 go install github.com/SergeAx/scrutus/cmd/scrutus@latest
 ```
 
-JavaScript and TypeScript are parsed by tree-sitter, which is C, so `go
-install` compiles them in only when a C compiler is on your `PATH`; without
-one you get Go and PHP. `scrutus version` lists the languages a binary
+JavaScript, TypeScript and Python are parsed by tree-sitter, which is C, so
+`go install` compiles them in only when a C compiler is on your `PATH`;
+without one you get Go and PHP. `scrutus version` lists the languages a binary
 carries.
 
 Set `TYPESAFE_API_KEY` in your environment, or put it in a `.env` file in the
@@ -98,8 +98,8 @@ model = "jev-latest"             # pin a version in CI for stable verdicts
 
 List only the languages you want scored. When a file in scope belongs to a
 configured language this build cannot parse, scrutus exits 2 instead of
-silently skipping the file. The default list includes Python, which is not
-supported yet.
+silently skipping the file, so a build without the tree-sitter languages
+needs the list narrowed.
 
 These comments are never scored: `TODO`, `FIXME`, `HACK`, `XXX`, license
 headers, shebangs, encoding lines, tool directives such as `//go:`, `nolint`,
@@ -136,7 +136,8 @@ The first matching rule wins, in this order:
 
 Wrong comments are never deleted automatically, because one may be the only
 sign that the code next to it is wrong too. A useless doc comment on an
-exported Go identifier is reported as `weak-comment` instead of being deleted.
+exported Go identifier or a Python docstring is reported as `weak-comment`
+instead of being deleted.
 If deleting comments leaves a file that no longer parses, scrutus keeps the
 original file and reports `fix-aborted`. The
 [design spec](docs/design_spec.0.1.md#6-classification-and-policy) explains the

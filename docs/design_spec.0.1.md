@@ -195,7 +195,7 @@ exempt_prefixes = [
 ]
 min_chars = 12                # shorter comments are skipped; annotations exempt
 context_lines = 20            # enclosing-function context cap
-keep_exported_docs = true     # Go: exported symbols keep their doc comment
+keep_exported_docs = true     # Go: exported symbols keep their doc comment; PHP: docblocks on declarations
 keep_docstrings = true        # Python: docstrings are never deleted
 delete_annotations = false    # redundant annotations are flagged, not deleted
 
@@ -214,7 +214,7 @@ Each `Extractor` yields a `Finding` per comment paired with the code it annotate
 | Go | `go/ast` + `go/token` (`ast.CommentMap`) | Doc comment → the whole declaration (signature + body); inline → the paragraph that follows (see rules below); trailing → the statement on the same line |
 | TypeScript, JavaScript | `go-tree-sitter` | Leading comment on a declaration → the whole declaration; other leading comments → the paragraph that follows; trailing → the node on the same line. A declaration is a function, class, method, field, interface, type alias, enum, signature or namespace anywhere, or a variable outside function bodies; inside one, a comment above `const` heads a paragraph. A member's decorators belong to it. Paragraphs run over statements, class and interface members, and object, array, argument and parameter entries. `/// <reference>` directives are syntax and never extracted |
 | PHP | `VKCOM/php-parser` (pure Go) | A `/** */` docblock pairs with the following declaration, or with the statement below it when it sits in a body, which is where `/** @var Foo $bar */` lives; `#` line comments handled like `//` |
-| Python | `go-tree-sitter` | `#` comments follow the paragraph and trailing rules; a docstring — the first statement of a module, class or function — pairs with the whole declaration as `Kind: Doc` |
+| Python | `go-tree-sitter` | `#` comments follow the paragraph and trailing rules; a comment right under a `def` or `class` header heads its body. A docstring — the first statement of a module, class or function — pairs with the whole declaration, decorators included, as `Kind: Doc`: its span is the quoted statement, so `fix` deletes it whole, while its `CodeText` is the declaration without it and it carries no `Context`. An f-string or bytes literal in that position is not a docstring |
 
 Rules shared across extractors:
 
@@ -394,7 +394,7 @@ The overreach guard runs before the axes: a section-header comment that summariz
 | accuracy ≤ 60 or usefulness ≤ 35 | Flag | warning | `weak-comment` |
 | otherwise | Keep | — | — |
 
-Rule ids are stable strings used in SARIF, in `--fail-on` reasoning, and in the baseline, so a threshold change in config does not rename anything downstream. Comments whose absence breaks something get one extra rule: `useless-comment` becomes `weak-comment` (never Delete) for exported Go symbols under `keep_exported_docs = true`, and for Python docstrings under `keep_docstrings = true`. Both default to on: Go tooling expects a doc comment to exist, and a docstring is reachable at runtime as `__doc__`.
+Rule ids are stable strings used in SARIF, in `--fail-on` reasoning, and in the baseline, so a threshold change in config does not rename anything downstream. Comments whose absence breaks something get one extra rule: `useless-comment` becomes `weak-comment` (never Delete) for exported Go symbols and PHP docblocks on declarations under `keep_exported_docs = true`, and for Python docstrings under `keep_docstrings = true`; each setting covers only its own languages. A docstring that is its body's only statement is never deleted whatever the settings, since removing it leaves an empty body. Both default to on: Go tooling expects a doc comment to exist, and a docstring is reachable at runtime as `__doc__`.
 
 Annotations are graded like any other comment, because an annotation restates the code as readily as prose does: `@var MyObject` above `$myObj = new MyObject('foo')` tells a reader nothing, while `@var list<Foo>` above `$items = []` states what the code cannot. The Usefulness question already separates the two, so no list of tags has to. Deletion is the asymmetric part — a redundant-looking annotation may still feed a static analyser or an IDE — so `redundant-annotation` only reports until a repo opts into `comments.delete_annotations`.
 
@@ -616,7 +616,7 @@ The v0.1 code follows this document with the gaps below, each an addition rather
 | Go extractor | Implemented: doc, inline, trailing, the paragraph rule, byte spans, stripped context |
 | PHP extractor | Implemented in pure Go, including docblock splitting into prose plus one finding per tag |
 | TS/JS extractors | Implemented with tree-sitter in cgo builds; a parse error is a skipped file in `check` and `fix-aborted` in `fix` |
-| Python extractor | Not written. The build fails with exit 2 when the scope needs it (§11) |
+| Python extractor | Implemented with tree-sitter in cgo builds, including docstrings |
 | Annotation findings | Implemented end to end for PHP docblocks and JSDoc |
 | All six reporters, cache, baseline, profiles, `.env`, budget | Implemented |
 | `.gitignore` awareness, `--stdin-filename` | Not implemented |

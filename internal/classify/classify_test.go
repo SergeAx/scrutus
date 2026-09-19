@@ -136,3 +136,31 @@ func TestProfilesShiftTheVerdict(t *testing.T) {
 		t.Errorf("strict: %s/%s, want delete/%s", strictDelete.Action, strictDelete.Rule, core.RuleUselessComment)
 	}
 }
+
+func TestEachLanguageAnswersToItsOwnKeepSetting(t *testing.T) {
+	useless := verdict(90, 5, 0.95, 0.1)
+	off := false
+	cases := []struct {
+		name    string
+		finding core.Finding
+		mutate  func(*config.Config)
+		rule    string
+	}{
+		{"docstrings off deletes a docstring", core.Finding{File: "m.py", Protected: true},
+			func(c *config.Config) { c.Comments.KeepDocstrings = &off }, core.RuleUselessComment},
+		{"exported docs off leaves docstrings alone", core.Finding{File: "m.py", Protected: true},
+			func(c *config.Config) { c.Comments.KeepExportedDocs = &off }, core.RuleWeakComment},
+		{"docstrings off leaves Go docs alone", core.Finding{File: "m.go", Protected: true},
+			func(c *config.Config) { c.Comments.KeepDocstrings = &off }, core.RuleWeakComment},
+		{"a required docstring survives any setting", core.Finding{File: "m.py", Protected: true, Required: true},
+			func(c *config.Config) { c.Comments.KeepDocstrings = &off }, core.RuleWeakComment},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classify.Classify(tc.finding, useless, resolved(t, tc.mutate))
+			if got.Rule != tc.rule {
+				t.Errorf("got %s/%s, want %s", got.Action, got.Rule, tc.rule)
+			}
+		})
+	}
+}

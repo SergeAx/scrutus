@@ -5,6 +5,7 @@ package classify
 import (
 	"github.com/SergeAx/scrutus/internal/config"
 	"github.com/SergeAx/scrutus/internal/core"
+	"github.com/SergeAx/scrutus/internal/extract"
 )
 
 // OverreachGuard is the probability above which a comment is treated as
@@ -46,15 +47,22 @@ func useless(r core.Result, f core.Finding, cfg config.Resolved) core.Result {
 		}
 		return r
 	}
-	// An exported Go doc comment or a Python docstring is load-bearing: report
-	// it, never delete it.
-	if f.Protected && (cfg.Comments.KeepExported() || cfg.Comments.KeepDocstring()) {
+	if f.Required || (f.Protected && keeps(f, cfg)) {
 		return flag(r, core.SeverityWarning, core.RuleWeakComment)
 	}
 	r.Action = core.ActionDelete
 	r.Severity = core.SeverityWarning
 	r.Rule = core.RuleUselessComment
 	return r
+}
+
+// keeps reports whether the setting that covers a protected comment is on:
+// keep_docstrings for Python, keep_exported_docs everywhere else.
+func keeps(f core.Finding, cfg config.Resolved) bool {
+	if extract.LanguageOf(f.File) == "python" {
+		return cfg.Comments.KeepDocstring()
+	}
+	return cfg.Comments.KeepExported()
 }
 
 func flag(r core.Result, severity core.Severity, rule string) core.Result {

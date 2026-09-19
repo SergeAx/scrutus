@@ -6,11 +6,10 @@ deletes the useless ones.
 
 ## Status
 
-The v0.1 core runs end to end for Go sources: `check`, `fix`, `baseline`,
+The v0.1 core runs end to end: `check`, `fix`, `baseline`,
 `cache` and `version`, every reporter, the cache, profiles, `.env` and the
-budget. Go and PHP parse in pure Go; JavaScript and TypeScript parse through
-tree-sitter in cgo builds. The Python extractor is not written yet. §12.4 of
-the spec tracks the gaps.
+budget. Go and PHP parse in pure Go; JavaScript, TypeScript and Python parse
+through tree-sitter in cgo builds. §12.4 of the spec tracks the gaps.
 
 The spec is [`docs/design_spec.0.1.md`](docs/design_spec.0.1.md); read it
 before writing code. When the code has to deviate from it, update the document

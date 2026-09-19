@@ -29,10 +29,23 @@ type grammar struct {
 	containers map[string]bool
 	// itemField limits a container's items to one field, for nodes such as
 	// `case x:` whose value is not an item.
-	itemField    map[string]string
+	itemField map[string]string
+	// headed containers start at their first item rather than at the header
+	// that opens them, so a comment right under the header would fall outside.
+	headed       map[string]bool
 	scopes       map[string]bool
 	documentable func(item *sitter.Node, inFunction bool) bool
 	directive    func(text string) bool
+	docstring    func(n *sitter.Node, src []byte) (docstring, bool)
+}
+
+// docstring is a string statement that Python treats as the doc comment of
+// the declaration it opens.
+type docstring struct {
+	stmt, text, decl span
+	// sole marks a docstring that is its body's only statement, so deleting it
+	// would leave the body empty.
+	sole bool
 }
 
 type Extractor struct{ g *grammar }
@@ -122,6 +135,7 @@ type walker struct {
 	lineStarts []int
 	comments   []comment
 	containers []container
+	docstrings []docstring
 	scopes     []span
 	stripped   []core.Span
 	opts       extract.Options
@@ -152,6 +166,11 @@ func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 		w.scopes = append(w.scopes, spanOf(n))
 		inFunction = true
 	}
+	if w.g.docstring != nil {
+		if d, ok := w.g.docstring(n, w.src); ok {
+			w.docstrings = append(w.docstrings, d)
+		}
+	}
 	for _, k := range kids {
 		switch {
 		case !k.node.IsNamed():
@@ -165,6 +184,14 @@ func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 
 func (w *walker) container(n *sitter.Node, kids []child, inFunction bool) container {
 	c := container{span: spanOf(n)}
+	if w.g.headed[n.Type()] {
+		for p := n.PrevSibling(); p != nil && !p.IsNull(); p = p.PrevSibling() {
+			if p.Type() != "comment" {
+				c.start = int(p.EndByte())
+				break
+			}
+		}
+	}
 	field := w.g.itemField[n.Type()]
 	decorated := -1
 	for _, k := range kids {
@@ -210,12 +237,52 @@ func (w *walker) findings(file string) []core.Finding {
 	for _, c := range w.comments {
 		w.stripped = append(w.stripped, core.Span{Start: c.start, End: c.end})
 	}
+	for _, d := range w.docstrings {
+		w.stripped = append(w.stripped, core.Span{Start: d.stmt.start, End: d.stmt.end})
+	}
+	sort.Slice(w.stripped, func(i, j int) bool { return w.stripped[i].Start < w.stripped[j].Start })
 
 	var out []core.Finding
 	for _, c := range w.groups() {
 		out = append(out, w.pair(file, c)...)
 	}
+	for _, d := range w.docstrings {
+		out = append(out, w.docstringFinding(file, d))
+	}
 	return out
+}
+
+// docstringFinding carries no Context: its code is the whole declaration
+// already, and the context renderer would print the docstring back inside the
+// marked code.
+func (w *walker) docstringFinding(file string, d docstring) core.Finding {
+	codeText, _ := w.capped(w.without(d.decl, d.stmt))
+	return core.Finding{
+		File:        file,
+		Comment:     core.Span{Start: d.stmt.start, End: d.stmt.end},
+		Code:        core.Span{Start: d.decl.start, End: d.decl.end},
+		Kind:        core.KindDoc,
+		CommentText: string(w.src[d.text.start:d.text.end]),
+		CodeText:    codeText,
+		Line:        w.line(d.stmt.start),
+		Column:      w.column(d.stmt.start),
+		Protected:   true,
+		Required:    d.sole,
+	}
+}
+
+// without is the text of decl with cut removed, taking cut's whole lines when
+// nothing else shares them.
+func (w *walker) without(decl, cut span) string {
+	from, to := cut.start, cut.end
+	if lineStart := w.lineStart(from); len(bytes.TrimSpace(w.src[lineStart:from])) == 0 {
+		from = lineStart
+	}
+	if newline := bytes.IndexByte(w.src[to:], '\n'); newline >= 0 && len(bytes.TrimSpace(w.src[to:to+newline])) == 0 {
+		to += newline + 1
+	}
+	from, to = max(from, decl.start), min(to, decl.end)
+	return string(w.src[decl.start:from]) + string(w.src[to:decl.end])
 }
 
 // groups merges consecutive own-line line comments into one, as go/ast does,
@@ -393,13 +460,19 @@ func (w *walker) context(commentStart int, code core.Span) string {
 }
 
 func (w *walker) text(s span) (string, core.Span) {
-	text := string(w.src[s.start:s.end])
+	text, kept := w.capped(string(w.src[s.start:s.end]))
+	return text, core.Span{Start: s.start, End: s.start + kept}
+}
+
+// capped keeps the first MaxCodeLines lines of text and says how many of its
+// bytes survived.
+func (w *walker) capped(text string) (string, int) {
 	lines := strings.Split(text, "\n")
 	if len(lines) <= w.opts.MaxCodeLines {
-		return text, core.Span{Start: s.start, End: s.end}
+		return text, len(text)
 	}
 	kept := strings.Join(lines[:w.opts.MaxCodeLines], "\n")
-	return kept + "\n" + w.g.truncation, core.Span{Start: s.start, End: s.start + len(kept)}
+	return kept + "\n" + w.g.truncation, len(kept)
 }
 
 func (w *walker) line(offset int) int { return sort.SearchInts(w.lineStarts, offset+1) }

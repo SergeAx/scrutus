@@ -39,9 +39,12 @@ type Finding struct {
 	Block string
 	Slot  string
 
-	// Protected marks a comment that classification may never delete: an
-	// exported Go doc comment or a Python docstring.
+	// Protected marks a comment the keep_* settings shield from deletion: an
+	// exported Go doc comment, a PHP docblock or a Python docstring.
 	Protected bool
+	// Required marks a comment the code cannot parse without, such as a
+	// docstring that is its body's only statement.
+	Required bool
 }
 
 // NewID hashes what a verdict actually depends on, so moving code between
