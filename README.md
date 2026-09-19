@@ -96,9 +96,10 @@ configured language this build cannot parse, scrutus exits 2 instead of
 silently skipping the file. The default list includes the three languages that
 are not supported yet.
 
-These comments are never scored: `TODO`, `FIXME`, `HACK`, `XXX`, tool
-directives such as `//go:`, `nolint` or `@phpstan-`, and anything shorter than
-12 characters. To silence a single comment, put `scrutus:ignore` in it or
+These comments are never scored: `TODO`, `FIXME`, `HACK`, `XXX`, license
+headers, shebangs, encoding lines, tool directives such as `//go:`, `nolint`,
+`@phpstan-`, `prettier-ignore` or `# noqa`, and anything shorter than 12
+characters. To silence a single comment, put `scrutus:ignore` in it or
 `scrutus:ignore-next` on the line above. See the
 [config file reference](docs/design_spec.0.1.md#42-config-file) for every
 setting.

@@ -18,7 +18,7 @@ scrutus is a Go CLI that finds inaccurate and useless source-code comments, repo
 
 - Rewriting comments. Jev does not generate text; v0.1 only reports and deletes. Rewrite is a v0.2 item behind a separate generator.
 - Any backend other than Jev (no Claude/OpenAI, no local models).
-- Grading TODO/FIXME/license headers/directive comments (`//go:generate`, `//nolint`, `// eslint-disable`). These are exempt by default.
+- Grading TODO/FIXME/license headers/directive comments (`//go:generate`, `//nolint`, `// eslint-disable`). These are exempt by default: `exempt_prefixes` is matched against the comment text with its markers stripped, so `#!`, `/*!` and `//# sourceMappingURL` reduce to `!` and `sourceMappingURL`.
 - Languages beyond the initial extractor set (Go, TypeScript/JavaScript, PHP, Python).
 - An editor/LSP integration.
 
@@ -181,9 +181,17 @@ usefulness = { delete = 15, warning = 35 }   # pct <= 15 -> Delete (fix) / warni
 [comments]
 kinds = ["doc", "inline", "trailing", "annotation"]
 exempt_prefixes = [
-  "TODO", "FIXME", "HACK", "XXX", "nolint", "go:", "eslint-", "scrutus:", "type: ignore",
-  "phpcs:", "@phpstan-", "@psalm-", "@ts-", "noqa", "pragma:", "pylint:",
-  "mypy:", "ruff:",
+  "TODO", "FIXME", "HACK", "XXX", "scrutus:",
+  # license headers and banners, shebangs, editor and encoding lines
+  "Copyright", "SPDX-License-Identifier", "@license", "@preserve", "!",
+  "-*-", "vim:", "coding:", "coding=",
+  "nolint", "go:",
+  "phpcs:", "@phpstan-", "@psalm-",
+  "eslint-", "@ts-", "prettier-ignore", "biome-ignore", "oxlint-", "tslint:",
+  "jshint", "deno-", "istanbul ", "c8 ", "webpack", "sourceMappingURL",
+  "sourceURL", "@jsx", "@flow", "@jest-", "@vitest-",
+  "type: ignore", "noqa", "pragma:", "pylint:", "mypy:", "ruff:",
+  "pyright:", "pyre-", "fmt:", "isort:", "yapf:", "nosec",
 ]
 min_chars = 12                # shorter comments are skipped; annotations exempt
 context_lines = 20            # enclosing-function context cap
