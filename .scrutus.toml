@@ -1,0 +1,11 @@
+version = 1
+profile = "default"
+languages = ["go"]
+ignore = ["vendor/**", "**/*_test.go", "testdata/**"]
+
+[jev]
+model = "jev-latest"
+timeout = "10s"
+
+[cache]
+ttl = "90d"

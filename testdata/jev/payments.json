@@ -1,0 +1,75 @@
+{
+  "model": "jev-1.13.0",
+  "input_tokens": 400,
+  "default": {
+    "accuracy": 2.7,
+    "usefulness": 2.4,
+    "overreach": 0.05,
+    "confidence": 0.93
+  },
+  "verdicts": [
+    {
+      "match": "multiplies the amount by three",
+      "accuracy": 0.1,
+      "usefulness": 0.4,
+      "overreach": 0.04,
+      "confidence": 0.97
+    },
+    {
+      "match": "Collapse internal whitespace and lowercase",
+      "accuracy": 1.1,
+      "usefulness": 1.6,
+      "overreach": 0.91,
+      "confidence": 0.9
+    },
+    {
+      "match": "Build the reference",
+      "accuracy": 2.6,
+      "usefulness": 0.2,
+      "overreach": 0.08,
+      "confidence": 0.95
+    },
+    {
+      "match": "Increment the attempt counter",
+      "accuracy": 3.0,
+      "usefulness": 0.05,
+      "overreach": 0.02,
+      "confidence": 0.96
+    },
+    {
+      "match": "delay in milliseconds",
+      "accuracy": 2.9,
+      "usefulness": 0.9,
+      "overreach": 0.03,
+      "confidence": 0.88
+    },
+    {
+      "match": "CreatedAt is the creation timestamp",
+      "accuracy": 3.0,
+      "usefulness": 0.1,
+      "overreach": 0.02,
+      "confidence": 0.94
+    },
+    {
+      "match": "AmountCents is the amount in minor units",
+      "accuracy": 3.0,
+      "usefulness": 2.8,
+      "overreach": 0.03,
+      "confidence": 0.95
+    },
+    {
+      "match": "Stripe rejects references longer than 40 bytes",
+      "accuracy": 2.9,
+      "usefulness": 3.0,
+      "overreach": 0.06,
+      "confidence": 0.94
+    },
+    {
+      "match": "ErrRefunded is returned when an order was already refunded",
+      "accuracy": 2.9,
+      "usefulness": 1.1,
+      "overreach": 0.04,
+      "confidence": 0.41
+    }
+  ]
+}

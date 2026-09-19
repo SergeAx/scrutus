@@ -1,0 +1,26 @@
+rubric_version = 1
+
+[accuracy]
+instructions = """
+How accurately does the COMMENT describe the CODE between the >>> CODE and
+<<< CODE markers? Use the surrounding CONTEXT only to resolve names and
+intent, not as the thing being described.
+"""
+criteria = [
+  "Fundamentally wrong: describes different behavior, values, or intent than the marked code",
+  "Materially misleading: partly right but a reader would draw a wrong conclusion",
+  "Roughly correct: minor imprecision, nothing a reader would act on wrongly",
+  "Accurate without material errors",
+]
+
+[usefulness]
+instructions = "How much does the COMMENT tell a competent reader that the marked CODE does not already say?"
+criteria = [
+  "No information beyond the code: restates the code or the signature, or states a type the code already states",
+  "Marginal: a hint a reader could derive anyway, e.g. a unit, an expanded abbreviation, a section label",
+  "Useful: explains a why, an invariant, an edge case, or a non-obvious effect",
+  "Essential context: without it the code would be misread or misused",
+]
+
+[overreach]
+instructions = "The COMMENT describes behavior or purpose that lies outside the marked CODE, for example the whole function or a later section."
