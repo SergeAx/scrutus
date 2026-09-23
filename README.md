@@ -28,7 +28,7 @@ gh attestation verify scrutus-linux-amd64 -R SergeAx/scrutus
 The macOS binaries are not notarized, so clear the quarantine flag a browser
 download sets: `xattr -d com.apple.quarantine scrutus-darwin-arm64`.
 
-Or build from source with Go 1.26 or newer:
+Or build from source with Go 1.27 or newer:
 
 ```sh
 go install github.com/SergeAx/scrutus/cmd/scrutus@latest
