@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/SergeAx/scrutus/internal/core"
@@ -15,13 +16,14 @@ func Context(src []byte, scope, code core.Span, comments []core.Span, limit int)
 		return ""
 	}
 
+	head := strip(src, scope.Start, code.Start, comments)
 	var b strings.Builder
-	b.Write(strip(src, scope.Start, code.Start, comments))
+	b.Write(head)
 	b.WriteString(">>> CODE\n")
 	b.Write(src[code.Start:code.End])
 	b.WriteString("\n<<< CODE\n")
 	b.Write(strip(src, code.End, scope.End, comments))
-	return capLines(b.String(), limit)
+	return capLines(b.String(), bytes.Count(head, []byte("\n")), limit)
 }
 
 func strip(src []byte, start, end int, comments []core.Span) []byte {
@@ -43,18 +45,12 @@ func strip(src []byte, start, end int, comments []core.Span) []byte {
 }
 
 // capLines keeps the marked code and as much of its surroundings as the line
-// budget allows, trimming the far ends first.
-func capLines(text string, limit int) string {
+// budget allows, trimming the far ends first. mark is the line the code starts
+// on, which may hold other code before the marker.
+func capLines(text string, mark, limit int) string {
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
 	if limit <= 0 || len(lines) <= limit {
 		return strings.Join(lines, "\n")
-	}
-	mark := 0
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), ">>> CODE") {
-			mark = i
-			break
-		}
 	}
 	start := max(0, mark-limit/2)
 	return strings.Join(lines[start:min(len(lines), start+limit)], "\n")
