@@ -31,11 +31,14 @@ gofmt -l .         # must print nothing, testdata included
 `testdata/sample` is the corpus the end-to-end tests run on, and
 `testdata/jev/payments.json` holds the verdicts the stub replays for it, keyed
 by a fragment of each comment. To drive the real binary the same way, serve the
-fixtures and point the SDK at them:
+fixtures and point the SDK at them. Run it from inside the sample, because the
+repo's own `.scrutus.toml` ignores `testdata/**`, and without the cache, which
+would otherwise keep the stub's verdicts:
 
 ```sh
 go run ./internal/jevstub/cmd/jevstub testdata/jev/payments.json   # prints a URL
-TYPESAFE_API_KEY=stub TYPESAFE_BASE_URL=<url> go run ./cmd/scrutus check testdata/sample
+cd testdata/sample
+TYPESAFE_API_KEY=stub TYPESAFE_BASE_URL=<url> go run ../../cmd/scrutus check --no-cache .
 ```
 
 Target the current stable Go release and use its idioms. Windows is both a
