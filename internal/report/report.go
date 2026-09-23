@@ -3,9 +3,10 @@
 package report
 
 import (
+	"cmp"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/SergeAx/scrutus/internal/core"
@@ -44,11 +45,8 @@ func Reportable(results []core.Result) []core.Result {
 			out = append(out, r)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Finding.File != out[j].Finding.File {
-			return out[i].Finding.File < out[j].Finding.File
-		}
-		return out[i].Finding.Line < out[j].Finding.Line
+	slices.SortStableFunc(out, func(a, b core.Result) int {
+		return cmp.Or(cmp.Compare(a.Finding.File, b.Finding.File), cmp.Compare(a.Finding.Line, b.Finding.Line))
 	})
 	return out
 }

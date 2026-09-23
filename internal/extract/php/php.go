@@ -3,8 +3,9 @@
 package php
 
 import (
+	"cmp"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/VKCOM/php-parser/pkg/ast"
@@ -26,6 +27,8 @@ func (Extractor) Languages() []string  { return []string{"php"} }
 func (Extractor) Extensions() []string { return []string{".php"} }
 
 type span struct{ start, end, line int }
+
+func byStart(a, b span) int { return cmp.Compare(a.start, b.start) }
 
 type comment struct {
 	span
@@ -58,9 +61,9 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 
 	w := &walker{src: src, seen: map[*token.Token]bool{}, options: opts}
 	w.walk(reflect.ValueOf(root), false)
-	sort.Slice(w.comments, func(i, j int) bool { return w.comments[i].start < w.comments[j].start })
-	sort.Slice(w.statements, func(i, j int) bool { return w.statements[i].start < w.statements[j].start })
-	sort.Slice(w.decls, func(i, j int) bool { return w.decls[i].start < w.decls[j].start })
+	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
+	slices.SortFunc(w.statements, byStart)
+	slices.SortFunc(w.decls, byStart)
 	for _, c := range w.comments {
 		w.commentSpans = append(w.commentSpans, core.Span{Start: c.start, End: c.end})
 	}

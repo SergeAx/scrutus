@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/SergeAx/scrutus/internal/core"
@@ -43,7 +42,7 @@ func Languages() []string {
 	for _, e := range registry {
 		names = append(names, e.Languages()...)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 

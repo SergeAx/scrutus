@@ -2,9 +2,10 @@
 package baseline
 
 import (
+	"cmp"
 	"encoding/json"
 	"os"
-	"sort"
+	"slices"
 
 	"github.com/SergeAx/scrutus/internal/core"
 )
@@ -57,7 +58,7 @@ func Write(path string, results []core.Result) error {
 		}
 		f.Entries = append(f.Entries, Entry{ID: r.Finding.ID, Rule: r.Rule})
 	}
-	sort.Slice(f.Entries, func(i, j int) bool { return f.Entries[i].ID < f.Entries[j].ID })
+	slices.SortFunc(f.Entries, func(a, b Entry) int { return cmp.Compare(a.ID, b.ID) })
 
 	raw, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {

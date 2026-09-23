@@ -3,12 +3,13 @@ package scope
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -197,7 +198,7 @@ func fromPaths(opts Options) ([]File, error) {
 		}
 	}
 
-	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	slices.SortFunc(files, func(a, b File) int { return cmp.Compare(a.Path, b.Path) })
 	return files, nil
 }
 

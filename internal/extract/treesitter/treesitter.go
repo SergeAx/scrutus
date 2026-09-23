@@ -4,9 +4,10 @@ package treesitter
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -231,14 +232,14 @@ func (w *walker) addComment(n *sitter.Node) {
 }
 
 func (w *walker) findings(file string) []core.Finding {
-	sort.Slice(w.comments, func(i, j int) bool { return w.comments[i].start < w.comments[j].start })
+	slices.SortFunc(w.comments, func(a, b comment) int { return cmp.Compare(a.start, b.start) })
 	for _, c := range w.comments {
 		w.stripped = append(w.stripped, core.Span{Start: c.start, End: c.end})
 	}
 	for _, d := range w.docstrings {
 		w.stripped = append(w.stripped, core.Span{Start: d.stmt.start, End: d.stmt.end})
 	}
-	sort.Slice(w.stripped, func(i, j int) bool { return w.stripped[i].Start < w.stripped[j].Start })
+	slices.SortFunc(w.stripped, func(a, b core.Span) int { return cmp.Compare(a.Start, b.Start) })
 
 	var out []core.Finding
 	for _, c := range w.groups() {
@@ -473,7 +474,10 @@ func (w *walker) capped(text string) (string, int) {
 	return kept + "\n" + w.g.truncation, len(kept)
 }
 
-func (w *walker) line(offset int) int { return sort.SearchInts(w.lineStarts, offset+1) }
+func (w *walker) line(offset int) int {
+	n, _ := slices.BinarySearch(w.lineStarts, offset+1)
+	return n
+}
 
 func (w *walker) lineStart(offset int) int { return w.lineStarts[w.line(offset)-1] }
 

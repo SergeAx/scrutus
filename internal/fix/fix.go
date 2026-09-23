@@ -4,11 +4,12 @@ package fix
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/SergeAx/scrutus/internal/core"
 	"github.com/SergeAx/scrutus/internal/extract"
@@ -42,7 +43,7 @@ func Apply(results []core.Result, src map[string][]byte, opts Options) ([]FileRe
 		}
 		byFile[path] = append(byFile[path], r)
 	}
-	sort.Strings(order)
+	slices.Sort(order)
 
 	out := make([]FileResult, 0, len(order))
 	for _, path := range order {
@@ -66,7 +67,7 @@ func applyFile(path string, results []core.Result, original []byte, opts Options
 	for _, r := range results {
 		spans = append(spans, widen(original, r.Finding.Comment))
 	}
-	sort.Slice(spans, func(i, j int) bool { return spans[i].Start > spans[j].Start })
+	slices.SortFunc(spans, func(a, b core.Span) int { return cmp.Compare(b.Start, a.Start) })
 
 	edited := append([]byte(nil), original...)
 	for _, span := range spans {
