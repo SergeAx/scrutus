@@ -10,7 +10,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/sync v0.23.0
-	serge.ax/go/typesafe-sdk-go v0.0.0-20260917204245-5ce345603123
+	serge.ax/go/typesafe-sdk-go v0.0.0-20260923040224-19480540f365
 )
 
 require (

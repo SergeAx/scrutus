@@ -40,5 +40,5 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 gotest.tools v2.2.0+incompatible h1:VsBPFP1AI068pPrMxtb/S8Zkgf9xEmTLJjfM+P5UIEo=
 gotest.tools v2.2.0+incompatible/go.mod h1:DsYFclhRJ6vuDpmuTbkuFWG+y2sxOXAzmJt81HFBacw=
-serge.ax/go/typesafe-sdk-go v0.0.0-20260917204245-5ce345603123 h1:PyuLQgf48QbC+myrWvUgKGQtniJf9IXRCo0AGkmRh0A=
-serge.ax/go/typesafe-sdk-go v0.0.0-20260917204245-5ce345603123/go.mod h1:pugOs5vB3MXX18pHEjFSbyYKUjF8hAZY/Lmf9L7Yc6Y=
+serge.ax/go/typesafe-sdk-go v0.0.0-20260923040224-19480540f365 h1:0bUKoEMWqLOlVkYtEPNAAbwG5PZxc+I2c1BqBw/8eUM=
+serge.ax/go/typesafe-sdk-go v0.0.0-20260923040224-19480540f365/go.mod h1:yn+VDptDN97ZAdTKdPBstd8VKAQoTc3aB2IsnDKPijE=
