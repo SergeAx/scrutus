@@ -68,7 +68,7 @@ func (e Extractor) Extract(name string, src []byte, opts extract.Options) ([]cor
 	}
 
 	w := newWalker(e.g, src, opts)
-	w.walk(root, false, true)
+	w.walk(root, -1, false)
 	return w.findings(name), nil
 }
 
@@ -103,7 +103,8 @@ type item struct {
 
 type container struct {
 	span
-	items []item
+	items  []item
+	parent int // index of the nearest container around it, or -1
 }
 
 type comment struct {
@@ -150,16 +151,18 @@ func newWalker(g *grammar, src []byte, opts extract.Options) *walker {
 	return w
 }
 
-func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
+func (w *walker) walk(n *sitter.Node, parent int, inFunction bool) {
 	kids := children(n)
 	if w.g.containers[n.Kind()] {
 		c := w.container(n, kids, inFunction)
+		c.parent = parent
 		w.containers = append(w.containers, c)
-		if root {
+		if parent < 0 {
 			for _, it := range c.items {
 				w.scopes = append(w.scopes, it.span)
 			}
 		}
+		parent = len(w.containers) - 1
 	}
 	if w.g.scopes[n.Kind()] {
 		w.scopes = append(w.scopes, spanOf(n))
@@ -176,7 +179,7 @@ func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 		case k.node.Kind() == "comment":
 			w.addComment(k.node)
 		default:
-			w.walk(k.node, inFunction, false)
+			w.walk(k.node, parent, inFunction)
 		}
 	}
 }
@@ -354,18 +357,25 @@ func (w *walker) code(c comment) (core.Kind, span, bool) {
 	return "", span{}, false
 }
 
+// innermost climbs from the last container to start before s: the walk
+// appends them in document order, so any container holding s is among its
+// ancestors. Of two sharing a span, the outer one wins.
 func (w *walker) innermost(s span) container {
-	var found container
-	ok := false
-	for _, c := range w.containers {
-		if c.start <= s.start && s.end <= c.end && (!ok || c.end-c.start < found.end-found.start) {
-			found, ok = c, true
+	i, _ := slices.BinarySearchFunc(w.containers, s.start+1, func(c container, start int) int { return cmp.Compare(c.start, start) })
+	for i--; i >= 0; i = w.containers[i].parent {
+		c := w.containers[i]
+		if s.end > c.end {
+			continue
 		}
+		for c.parent >= 0 && w.containers[c.parent].span == c.span {
+			c = w.containers[c.parent]
+		}
+		return c
 	}
-	if !ok && len(w.containers) > 0 {
+	if len(w.containers) > 0 {
 		return w.containers[0]
 	}
-	return found
+	return container{}
 }
 
 // from is the index of the first item starting at or after offset.
