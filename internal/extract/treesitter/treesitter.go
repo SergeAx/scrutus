@@ -136,7 +136,7 @@ type walker struct {
 	containers []container
 	docstrings []docstring
 	scopes     []span
-	stripped   []core.Span
+	stripped   *extract.Stripped
 	opts       extract.Options
 }
 
@@ -233,13 +233,15 @@ func (w *walker) addComment(n *sitter.Node) {
 
 func (w *walker) findings(file string) []core.Finding {
 	slices.SortFunc(w.comments, func(a, b comment) int { return cmp.Compare(a.start, b.start) })
+	var cuts []core.Span
 	for _, c := range w.comments {
-		w.stripped = append(w.stripped, core.Span{Start: c.start, End: c.end})
+		cuts = append(cuts, core.Span{Start: c.start, End: c.end})
 	}
 	for _, d := range w.docstrings {
-		w.stripped = append(w.stripped, core.Span{Start: d.stmt.start, End: d.stmt.end})
+		cuts = append(cuts, core.Span{Start: d.stmt.start, End: d.stmt.end})
 	}
-	slices.SortFunc(w.stripped, func(a, b core.Span) int { return cmp.Compare(a.Start, b.Start) })
+	slices.SortFunc(cuts, func(a, b core.Span) int { return cmp.Compare(a.Start, b.Start) })
+	w.stripped = extract.Strip(w.src, cuts)
 
 	var out []core.Finding
 	for _, c := range w.groups() {
@@ -455,7 +457,7 @@ func (w *walker) context(commentStart int, code core.Span) string {
 	if !ok {
 		return ""
 	}
-	return extract.Context(w.src, core.Span{Start: scope.start, End: scope.end}, code, w.stripped, w.opts.ContextLines)
+	return w.stripped.Context(core.Span{Start: scope.start, End: scope.end}, code, w.opts.ContextLines)
 }
 
 func (w *walker) text(s span) (string, core.Span) {

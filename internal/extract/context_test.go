@@ -13,7 +13,7 @@ func TestContextCentresOnCodeStartingMidLine(t *testing.T) {
 	at := strings.Index(src, "second")
 	code := core.Span{Start: at, End: at + len("second")}
 
-	got := extract.Context([]byte(src), core.Span{End: len(src)}, code, nil, 20)
+	got := extract.Strip([]byte(src), nil).Context(core.Span{End: len(src)}, code, 20)
 	if !strings.Contains(got, "first, >>> CODE\nsecond\n<<< CODE") {
 		t.Errorf("context lost the code:\n%s", got)
 	}

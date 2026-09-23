@@ -38,13 +38,13 @@ type comment struct {
 }
 
 type walker struct {
-	src          []byte
-	comments     []comment
-	commentSpans []core.Span
-	statements   []span // every statement in a body, for the paragraph rule
-	decls        []span // what a docblock can document
-	seen         map[*token.Token]bool
-	options      extract.Options
+	src        []byte
+	comments   []comment
+	stripped   *extract.Stripped
+	statements []span // every statement in a body, for the paragraph rule
+	decls      []span // what a docblock can document
+	seen       map[*token.Token]bool
+	options    extract.Options
 }
 
 func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.Finding, error) {
@@ -64,9 +64,11 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
 	slices.SortFunc(w.statements, byStart)
 	slices.SortFunc(w.decls, byStart)
+	var cuts []core.Span
 	for _, c := range w.comments {
-		w.commentSpans = append(w.commentSpans, core.Span{Start: c.start, End: c.end})
+		cuts = append(cuts, core.Span{Start: c.start, End: c.end})
 	}
+	w.stripped = extract.Strip(src, cuts)
 
 	var findings []core.Finding
 	for _, c := range w.comments {
@@ -314,7 +316,7 @@ func (w *walker) context(code core.Span) string {
 	if !ok {
 		return ""
 	}
-	return extract.Context(w.src, core.Span{Start: scope.start, End: scope.end}, code, w.commentSpans, w.options.ContextLines)
+	return w.stripped.Context(core.Span{Start: scope.start, End: scope.end}, code, w.options.ContextLines)
 }
 
 func (w *walker) enclosingDecl(code core.Span) (span, bool) {

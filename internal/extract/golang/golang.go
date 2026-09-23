@@ -33,15 +33,15 @@ type owner struct {
 }
 
 type fileWalk struct {
-	fset         *token.FileSet
-	file         *token.File
-	src          []byte
-	owners       map[*ast.CommentGroup]owner
-	blocks       []block
-	scopes       []owner // enclosing declarations, for Context
-	groups       []*ast.CommentGroup
-	commentSpans []core.Span
-	options      extract.Options
+	fset     *token.FileSet
+	file     *token.File
+	src      []byte
+	owners   map[*ast.CommentGroup]owner
+	blocks   []block
+	scopes   []owner // enclosing declarations, for Context
+	groups   []*ast.CommentGroup
+	stripped *extract.Stripped
+	options  extract.Options
 }
 
 func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.Finding, error) {
@@ -60,9 +60,11 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 		options: opts,
 	}
 	w.collect(parsed)
+	var cuts []core.Span
 	for _, group := range parsed.Comments {
-		w.commentSpans = append(w.commentSpans, core.Span{Start: w.offset(group.Pos()), End: w.offset(group.End())})
+		cuts = append(cuts, core.Span{Start: w.offset(group.Pos()), End: w.offset(group.End())})
 	}
+	w.stripped = extract.Strip(src, cuts)
 
 	var findings []core.Finding
 	for _, group := range parsed.Comments {
@@ -272,7 +274,7 @@ func (w *fileWalk) context(group *ast.CommentGroup, code core.Span) string {
 	if !ok {
 		return ""
 	}
-	return extract.Context(w.src, core.Span{Start: w.offset(scope.start), End: w.offset(scope.end)}, code, w.commentSpans, w.options.ContextLines)
+	return w.stripped.Context(core.Span{Start: w.offset(scope.start), End: w.offset(scope.end)}, code, w.options.ContextLines)
 }
 
 func (w *fileWalk) enclosing(pos token.Pos, code core.Span) (owner, bool) {
