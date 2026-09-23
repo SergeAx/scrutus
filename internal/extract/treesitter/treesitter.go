@@ -368,54 +368,46 @@ func (w *walker) innermost(s span) container {
 	return found
 }
 
+// from is the index of the first item starting at or after offset.
+func (c container) from(offset int) int {
+	i, _ := slices.BinarySearchFunc(c.items, offset, func(it item, start int) int { return cmp.Compare(it.start, start) })
+	return i
+}
+
 func (c container) after(offset int) (item, bool) {
-	for _, it := range c.items {
-		if it.start >= offset {
-			return it, true
-		}
+	i := c.from(offset)
+	if i == len(c.items) {
+		return item{}, false
 	}
-	return item{}, false
+	return c.items[i], true
 }
 
 func (c container) around(s span) (span, bool) {
-	for _, it := range c.items {
-		if it.start <= s.start && s.end <= it.end {
-			return it.span, true
-		}
+	i := c.from(s.start + 1)
+	if i == 0 || c.items[i-1].end < s.end {
+		return span{}, false
 	}
-	return span{}, false
+	return c.items[i-1].span, true
 }
 
 func (c container) before(offset int) (span, bool) {
-	var best span
-	found := false
-	for _, it := range c.items {
-		if it.end <= offset {
-			best, found = it.span, true
-		}
+	i, _ := slices.BinarySearchFunc(c.items, offset+1, func(it item, end int) int { return cmp.Compare(it.end, end) })
+	if i == 0 {
+		return span{}, false
 	}
-	return best, found
+	return c.items[i-1].span, true
 }
 
 func (w *walker) sameLine(box container, c comment) (span, bool) {
-	var best span
-	found := false
-	for _, it := range box.items {
-		if it.end <= c.start && w.line(it.end-1) == w.line(c.start) {
-			best, found = it.span, true
-		}
-	}
-	return best, found
+	it, ok := box.before(c.start)
+	return it, ok && w.line(it.end-1) == w.line(c.start)
 }
 
 // paragraph is the run of items a comment heads, ending at a blank line, the
 // next comment, or the end of the container.
 func (w *walker) paragraph(box container, c comment) (span, bool) {
 	var run []span
-	for _, it := range box.items {
-		if it.start < c.end {
-			continue
-		}
+	for _, it := range box.items[box.from(c.end):] {
 		if len(run) > 0 {
 			previous := run[len(run)-1]
 			if w.line(it.start)-w.line(previous.end-1) > 1 || w.commentBetween(previous.end, it.start) {
@@ -438,12 +430,8 @@ func (w *walker) adjacent(from, to int) bool {
 }
 
 func (w *walker) commentBetween(from, to int) bool {
-	for _, c := range w.comments {
-		if c.start >= from && c.end <= to {
-			return true
-		}
-	}
-	return false
+	i, _ := slices.BinarySearchFunc(w.comments, from, func(c comment, start int) int { return cmp.Compare(c.start, start) })
+	return i < len(w.comments) && w.comments[i].end <= to
 }
 
 func (w *walker) context(commentStart int, code core.Span) string {
