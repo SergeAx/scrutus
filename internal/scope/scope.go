@@ -106,7 +106,7 @@ func fromGit(opts Options, nameArgs, diffArgs []string) ([]File, error) {
 	ranges := parseHunks(diff)
 
 	var files []File
-	for _, name := range strings.Split(strings.ReplaceAll(names, "\r\n", "\n"), "\n") {
+	for name := range strings.SplitSeq(strings.ReplaceAll(names, "\r\n", "\n"), "\n") {
 		name = strings.TrimSpace(name)
 		if name == "" || ignored(name, opts.Ignore) {
 			continue

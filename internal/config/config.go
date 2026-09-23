@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -193,8 +194,7 @@ func Load(path string) (Config, error) {
 	decoder := toml.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&file); err != nil {
-		var strict *toml.StrictMissingError
-		if errors.As(err, &strict) {
+		if strict, ok := errors.AsType[*toml.StrictMissingError](err); ok {
 			return cfg, fmt.Errorf("%s: %s", path, strict.String())
 		}
 		return cfg, fmt.Errorf("%s: %w", path, err)
@@ -340,10 +340,5 @@ func (c Comments) KeepDocstring() bool {
 }
 
 func (c Comments) AllowsKind(kind string) bool {
-	for _, k := range c.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Kinds, kind)
 }

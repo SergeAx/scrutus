@@ -4,6 +4,7 @@ package extract
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -49,10 +50,8 @@ func Languages() []string {
 func For(file string) (Extractor, bool) {
 	ext := strings.ToLower(filepath.Ext(file))
 	for _, e := range registry {
-		for _, candidate := range e.Extensions() {
-			if candidate == ext {
-				return e, true
-			}
+		if slices.Contains(e.Extensions(), ext) {
+			return e, true
 		}
 	}
 	return nil, false
@@ -96,17 +95,8 @@ func Extract(file string, src []byte, languages []string, opts Options) ([]core.
 		return e.Extract(file, src, opts)
 	}
 	lang := LanguageOf(file)
-	if lang != "" && contains(languages, lang) {
+	if lang != "" && slices.Contains(languages, lang) {
 		return nil, &MissingExtractorError{Language: lang, File: file}
 	}
 	return nil, nil
-}
-
-func contains(haystack []string, needle string) bool {
-	for _, item := range haystack {
-		if item == needle {
-			return true
-		}
-	}
-	return false
 }

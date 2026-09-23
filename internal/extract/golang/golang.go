@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"slices"
 	"strings"
 
 	"github.com/SergeAx/scrutus/internal/core"
@@ -128,10 +129,8 @@ func genDeclExported(decl *ast.GenDecl) bool {
 				return true
 			}
 		case *ast.ValueSpec:
-			for _, name := range s.Names {
-				if exportedName(name) {
-					return true
-				}
+			if slices.ContainsFunc(s.Names, exportedName) {
+				return true
 			}
 		}
 	}

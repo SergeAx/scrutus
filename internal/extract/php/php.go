@@ -76,7 +76,7 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 // child accessor, and comments live in the tokens' free-floating lists.
 func (w *walker) walk(v reflect.Value, inBody bool) {
 	switch v.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		if v.IsNil() {
 			return
 		}
@@ -119,7 +119,9 @@ func (w *walker) collectTokens(tok *token.Token) {
 			continue
 		}
 		w.comments = append(w.comments, comment{
-			span:   span{start: free.Position.StartPos, end: free.Position.EndPos, line: free.Position.StartLine},
+			start:  free.Position.StartPos,
+			end:    free.Position.EndPos,
+			line:   free.Position.StartLine,
 			text:   strings.TrimRight(string(free.Value), " \t\r\n"),
 			isDoc:  free.ID == token.T_DOC_COMMENT,
 			column: w.column(free.Position.StartPos),
@@ -172,11 +174,11 @@ func (w *walker) pair(file string, c comment) []core.Finding {
 		Code:      codeSpan,
 		Kind:      kind,
 		CodeText:  codeText,
+		Context:   w.context(codeSpan),
 		Line:      c.line,
 		Column:    c.column,
 		Protected: protected,
 	}
-	base.Context = w.context(codeSpan)
 
 	if !c.isDoc {
 		base.CommentText = c.text

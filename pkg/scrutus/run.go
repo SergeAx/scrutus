@@ -343,8 +343,7 @@ func collect(scoped scope.Result, cfg config.Resolved, rubricVersion int) ([]cor
 			ContextLines: cfg.Comments.ContextLines,
 		})
 		if err != nil {
-			var missing *extract.MissingExtractorError
-			if errors.As(err, &missing) {
+			if _, ok := errors.AsType[*extract.MissingExtractorError](err); ok {
 				return nil, nil, 0, err
 			}
 			fmt.Fprintf(os.Stderr, "scrutus: %s: skipped: %v\n", file.Path, err)
@@ -370,7 +369,7 @@ func collect(scoped scope.Result, cfg config.Resolved, rubricVersion int) ([]cor
 
 func isBinary(src []byte) bool {
 	limit := min(len(src), 8000)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		if src[i] == 0 {
 			return true
 		}

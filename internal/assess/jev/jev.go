@@ -52,7 +52,6 @@ func (a *Assessor) Assess(ctx context.Context, findings []core.Finding) ([]core.
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(a.concurrency)
 	for i, blockFindings := range blocks {
-		i, blockFindings := i, blockFindings
 		g.Go(func() error {
 			got, err := a.assessBlock(ctx, blockFindings)
 			if err != nil {
