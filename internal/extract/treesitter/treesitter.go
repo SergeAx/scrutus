@@ -4,13 +4,12 @@ package treesitter
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/SergeAx/scrutus/internal/core"
 	"github.com/SergeAx/scrutus/internal/extract"
@@ -56,12 +55,12 @@ func (e Extractor) Extensions() []string { return e.g.extensions }
 func (e Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.Finding, error) {
 	parser := sitter.NewParser()
 	defer parser.Close()
-	parser.SetLanguage(e.g.language(strings.ToLower(filepath.Ext(name))))
-
-	tree, err := parser.ParseCtx(context.Background(), nil, src)
-	if err != nil {
+	if err := parser.SetLanguage(e.g.language(strings.ToLower(filepath.Ext(name)))); err != nil {
 		return nil, err
 	}
+
+	tree := parser.Parse(src, nil)
+	defer tree.Close()
 	root := tree.RootNode()
 	if root.HasError() {
 		return nil, syntaxError(root)
@@ -76,7 +75,7 @@ func (e Extractor) Extract(name string, src []byte, opts extract.Options) ([]cor
 // recovers from any input, so an error node is the only failure signal, and
 // fix relies on it to refuse an edit that broke the file.
 func syntaxError(n *sitter.Node) error {
-	for n.Type() != "ERROR" && !n.IsMissing() {
+	for !n.IsError() && !n.IsMissing() {
 		var next *sitter.Node
 		for _, c := range children(n) {
 			if c.node.HasError() {
@@ -89,7 +88,7 @@ func syntaxError(n *sitter.Node) error {
 		}
 		n = next
 	}
-	return fmt.Errorf("syntax error at line %d", n.StartPoint().Row+1)
+	return fmt.Errorf("syntax error at line %d", n.StartPosition().Row+1)
 }
 
 type span struct{ start, end int }
@@ -117,14 +116,13 @@ type child struct {
 	field string
 }
 
-// children indexes rather than walking a TreeCursor: the bundled runtime's
-// cursor hands an extra the alias of the slot it sits in, so a comment inside a
-// TypeScript interface would read as interface_body.
+// children indexes rather than walking a TreeCursor: creating and deleting one
+// per node costs two trips through the binding's Go allocator hooks.
 func children(n *sitter.Node) []child {
-	count := int(n.ChildCount())
+	count := n.ChildCount()
 	out := make([]child, 0, count)
 	for i := range count {
-		out = append(out, child{n.Child(i), n.FieldNameForChild(i)})
+		out = append(out, child{n.Child(i), n.FieldNameForChild(uint32(i))})
 	}
 	return out
 }
@@ -153,7 +151,7 @@ func newWalker(g *grammar, src []byte, opts extract.Options) *walker {
 
 func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 	kids := children(n)
-	if w.g.containers[n.Type()] {
+	if w.g.containers[n.Kind()] {
 		c := w.container(n, kids, inFunction)
 		w.containers = append(w.containers, c)
 		if root {
@@ -162,7 +160,7 @@ func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 			}
 		}
 	}
-	if w.g.scopes[n.Type()] {
+	if w.g.scopes[n.Kind()] {
 		w.scopes = append(w.scopes, spanOf(n))
 		inFunction = true
 	}
@@ -174,7 +172,7 @@ func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 	for _, k := range kids {
 		switch {
 		case !k.node.IsNamed():
-		case k.node.Type() == "comment":
+		case k.node.Kind() == "comment":
 			w.addComment(k.node)
 		default:
 			w.walk(k.node, inFunction, false)
@@ -184,18 +182,18 @@ func (w *walker) walk(n *sitter.Node, inFunction, root bool) {
 
 func (w *walker) container(n *sitter.Node, kids []child, inFunction bool) container {
 	c := container{span: spanOf(n)}
-	if w.g.headed[n.Type()] {
-		for p := n.PrevSibling(); p != nil && !p.IsNull(); p = p.PrevSibling() {
-			if p.Type() != "comment" {
+	if w.g.headed[n.Kind()] {
+		for p := n.PrevSibling(); p != nil; p = p.PrevSibling() {
+			if p.Kind() != "comment" {
 				c.start = int(p.EndByte())
 				break
 			}
 		}
 	}
-	field := w.g.itemField[n.Type()]
+	field := w.g.itemField[n.Kind()]
 	decorated := -1
 	for _, k := range kids {
-		typ := k.node.Type()
+		typ := k.node.Kind()
 		if !k.node.IsNamed() || typ == "comment" || typ == "hash_bang_line" || (field != "" && k.field != field) {
 			continue
 		}

@@ -5,10 +5,9 @@ package treesitter
 import (
 	"regexp"
 
-	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/javascript"
-	"github.com/smacker/go-tree-sitter/typescript/tsx"
-	"github.com/smacker/go-tree-sitter/typescript/typescript"
+	sitter "github.com/tree-sitter/go-tree-sitter"
+	javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
+	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 
 	"github.com/SergeAx/scrutus/internal/extract"
 )
@@ -18,10 +17,16 @@ func init() {
 	extract.Register(Extractor{&typescriptGrammar})
 }
 
+var (
+	javascriptLanguage = sitter.NewLanguage(javascript.Language())
+	typescriptLanguage = sitter.NewLanguage(typescript.LanguageTypescript())
+	tsxLanguage        = sitter.NewLanguage(typescript.LanguageTSX())
+)
+
 var javascriptGrammar = grammar{
 	name:         "javascript",
 	extensions:   []string{".js", ".jsx", ".mjs", ".cjs"},
-	language:     func(string) *sitter.Language { return javascript.GetLanguage() },
+	language:     func(string) *sitter.Language { return javascriptLanguage },
 	truncation:   "// ... truncated by scrutus",
 	containers:   jsContainers,
 	itemField:    jsItemFields,
@@ -35,9 +40,9 @@ var typescriptGrammar = grammar{
 	extensions: []string{".ts", ".tsx", ".mts", ".cts"},
 	language: func(ext string) *sitter.Language {
 		if ext == ".tsx" {
-			return tsx.GetLanguage()
+			return tsxLanguage
 		}
-		return typescript.GetLanguage()
+		return typescriptLanguage
 	},
 	truncation:   "// ... truncated by scrutus",
 	containers:   jsContainers,
@@ -72,14 +77,14 @@ var jsDeclarations = set(
 // inside a function body it heads the statements below, while at module level
 // it documents the binding.
 func jsDocumentable(n *sitter.Node, inFunction bool) bool {
-	switch n.Type() {
+	switch n.Kind() {
 	case "lexical_declaration", "variable_declaration":
 		return !inFunction
 	case "expression_statement":
 		inner := n.NamedChild(0)
-		return inner != nil && (inner.Type() == "internal_module" || inner.Type() == "module")
+		return inner != nil && (inner.Kind() == "internal_module" || inner.Kind() == "module")
 	}
-	return jsDeclarations[n.Type()]
+	return jsDeclarations[n.Kind()]
 }
 
 // tripleSlash matches TypeScript's `/// <reference … />` compiler directives.

@@ -565,7 +565,7 @@ scrutus/
 | `.env` files | `joho/godotenv` | Parses without overwriting the environment |
 | Go parsing | stdlib `go/ast`, `go/token` | No dependency, exact spans |
 | PHP parsing | `VKCOM/php-parser` | Pure Go, PHP 8 syntax, comments reachable as free-floating tokens |
-| TS/JS/Python parsing | `smacker/go-tree-sitter` | One API and shipped grammars, at the price of cgo |
+| TS/JS/Python parsing | `tree-sitter/go-tree-sitter`, plus each grammar's own Go binding | The upstream runtime and grammars, versioned per language, at the price of cgo |
 | Cache | `etcd-io/bbolt` | Single-file, transactional, pure Go |
 | Concurrency | `golang.org/x/sync/errgroup` | Bounded parallelism with error propagation |
 | Release | GitHub Actions runners, `actions/attest-build-provenance` | Native cgo builds per OS with signed provenance, no cross toolchains |

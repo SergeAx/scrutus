@@ -198,6 +198,17 @@ func TestCRLFSourcesKeepExactSpans(t *testing.T) {
 	}
 }
 
+func TestKeywordsAsNamesParse(t *testing.T) {
+	for _, src := range []string{
+		"const _function = 1;\nexport { _function as function };\n",
+		"using(resource, () => {});\n",
+	} {
+		if _, err := extract.Extract("names.js", []byte(src), []string{"javascript"}, extract.Options{}); err != nil {
+			t.Errorf("%q: %v; tree-sitter-javascript v0.25.0 regressed here", src, err)
+		}
+	}
+}
+
 func TestSyntaxErrorIsAnError(t *testing.T) {
 	_, err := extract.Extract("broken.js", []byte("function f( {\n"), []string{"javascript"}, extract.Options{})
 	if err == nil || !strings.Contains(err.Error(), "line 1") {
