@@ -45,6 +45,7 @@ type walker struct {
 	statements []span // every statement in a body, for the paragraph rule
 	endings    []span // statements by the line they end on, latest start first
 	decls      []span // what a docblock can document
+	outer      []int  // index of the declaration around each one, or -1
 	seen       map[*token.Token]bool
 	options    extract.Options
 }
@@ -71,6 +72,7 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
 	slices.SortFunc(w.statements, byStart)
 	slices.SortFunc(w.decls, byStart)
+	w.nest()
 	w.endings = slices.Clone(w.statements)
 	slices.SortFunc(w.endings, func(a, b span) int {
 		return cmp.Or(cmp.Compare(w.line(a.end-1), w.line(b.end-1)), cmp.Compare(b.start, a.start))
@@ -86,6 +88,21 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 		findings = append(findings, w.pair(name, c)...)
 	}
 	return findings, nil
+}
+
+func (w *walker) nest() {
+	var open []int
+	for i, decl := range w.decls {
+		for len(open) > 0 && w.decls[open[len(open)-1]].end < decl.end {
+			open = open[:len(open)-1]
+		}
+		outer := -1
+		if len(open) > 0 {
+			outer = open[len(open)-1]
+		}
+		w.outer = append(w.outer, outer)
+		open = append(open, i)
+	}
 }
 
 // walk reaches every node and token by reflection: the AST has no generic
@@ -327,17 +344,15 @@ func (w *walker) context(code core.Span) string {
 	return w.stripped.Context(core.Span{Start: scope.start, End: scope.end}, code, w.options.ContextLines)
 }
 
+// enclosingDecl climbs from the last declaration to start before the code:
+// declarations nest, so any that holds the code is among its outers.
 func (w *walker) enclosingDecl(code core.Span) (span, bool) {
-	var found span
-	ok := false
-	for _, decl := range w.decls {
-		if decl.start <= code.Start && code.End <= decl.end {
-			if !ok || (decl.end-decl.start) < (found.end-found.start) {
-				found, ok = decl, true
-			}
+	for i := seek(w.decls, code.Start+1) - 1; i >= 0; i = w.outer[i] {
+		if code.End <= w.decls[i].end {
+			return w.decls[i], true
 		}
 	}
-	return found, ok
+	return span{}, false
 }
 
 func (w *walker) line(offset int) int {
