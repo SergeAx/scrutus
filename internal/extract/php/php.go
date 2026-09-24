@@ -43,6 +43,7 @@ type walker struct {
 	comments   []comment
 	stripped   *extract.Stripped
 	statements []span // every statement in a body, for the paragraph rule
+	endings    []span // statements by the line they end on, latest start first
 	decls      []span // what a docblock can document
 	seen       map[*token.Token]bool
 	options    extract.Options
@@ -70,6 +71,10 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
 	slices.SortFunc(w.statements, byStart)
 	slices.SortFunc(w.decls, byStart)
+	w.endings = slices.Clone(w.statements)
+	slices.SortFunc(w.endings, func(a, b span) int {
+		return cmp.Or(cmp.Compare(w.line(a.end-1), w.line(b.end-1)), cmp.Compare(b.start, a.start))
+	})
 	var cuts []core.Span
 	for _, c := range w.comments {
 		cuts = append(cuts, core.Span{Start: c.start, End: c.end})
@@ -228,36 +233,38 @@ func (w *walker) code(c comment) (core.Kind, span, bool) {
 	return core.KindInline, span{}, false
 }
 
+// seek is the index of the first span starting at or after offset.
+func seek(spans []span, offset int) int {
+	i, _ := slices.BinarySearchFunc(spans, offset, func(s span, offset int) int { return cmp.Compare(s.start, offset) })
+	return i
+}
+
 func (w *walker) nextDecl(after int) (span, bool) {
-	for _, decl := range w.decls {
-		if decl.start >= after {
-			return decl, true
-		}
+	i := seek(w.decls, after)
+	if i == len(w.decls) {
+		return span{}, false
 	}
-	return span{}, false
+	return w.decls[i], true
 }
 
 func (w *walker) sameLineStatement(c comment) (span, bool) {
-	var best span
-	found := false
-	for _, stmt := range w.statements {
-		if stmt.end <= c.start && w.line(stmt.end-1) == c.line {
-			if !found || stmt.start > best.start {
-				best, found = stmt, true
-			}
+	i, _ := slices.BinarySearchFunc(w.endings, c.line, func(s span, line int) int { return cmp.Compare(w.line(s.end-1), line) })
+	for _, stmt := range w.endings[i:] {
+		if w.line(stmt.end-1) != c.line {
+			break
+		}
+		if stmt.end <= c.start {
+			return stmt, true
 		}
 	}
-	return best, found
+	return span{}, false
 }
 
 // paragraph is the run of statements a comment heads, ending at a blank line,
 // the next comment, or the end of the enclosing body.
 func (w *walker) paragraph(c comment) (span, bool) {
 	var run []span
-	for _, stmt := range w.statements {
-		if stmt.start < c.end {
-			continue
-		}
+	for _, stmt := range w.statements[seek(w.statements, c.end):] {
 		if len(run) == 0 {
 			if w.enclosingStatement(stmt, c) {
 				continue
@@ -287,23 +294,17 @@ func (w *walker) enclosingStatement(stmt span, c comment) bool {
 }
 
 func (w *walker) precedingStatement(c comment) (span, bool) {
-	var best span
-	found := false
-	for _, stmt := range w.statements {
-		if stmt.end <= c.start && (!found || stmt.start > best.start) {
-			best, found = stmt, true
+	for i := seek(w.statements, c.start+1) - 1; i >= 0; i-- {
+		if stmt := w.statements[i]; stmt.end <= c.start {
+			return stmt, true
 		}
 	}
-	return best, found
+	return span{}, false
 }
 
 func (w *walker) commentBetween(from, to int) bool {
-	for _, c := range w.comments {
-		if c.start > from && c.end < to {
-			return true
-		}
-	}
-	return false
+	i, _ := slices.BinarySearchFunc(w.comments, from+1, func(c comment, start int) int { return cmp.Compare(c.start, start) })
+	return i < len(w.comments) && w.comments[i].end < to
 }
 
 func (w *walker) text(s span) (string, core.Span) {
