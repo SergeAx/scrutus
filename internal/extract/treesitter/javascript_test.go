@@ -251,3 +251,30 @@ func TestCommentAboveAClausePairsWithIt(t *testing.T) {
 		}
 	}
 }
+
+func TestCommentAloneInAnEmptyBodyIsGraded(t *testing.T) {
+	all := extractFrom(t, "noop.js", `function noop() {
+  // Handled upstream, so nothing is left to do here.
+}
+
+try {
+  warm();
+} catch (e) {
+  // The cache is optional.
+}
+`)
+	cases := []struct{ comment, codeHas string }{
+		{"// Handled upstream, so nothing is left to do here.", "function noop()"},
+		{"// The cache is optional.", "catch (e)"},
+	}
+	for _, tc := range cases {
+		f, ok := all[tc.comment]
+		if !ok {
+			t.Errorf("%q was not extracted", tc.comment)
+			continue
+		}
+		if !strings.Contains(f.CodeText, tc.codeHas) {
+			t.Errorf("%q: code %q lacks %q", tc.comment, f.CodeText, tc.codeHas)
+		}
+	}
+}

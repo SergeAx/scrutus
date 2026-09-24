@@ -359,10 +359,7 @@ func (w *walker) code(c comment) (core.Kind, span, bool) {
 	// A comment inside an expression, such as between chained calls, belongs
 	// to the statement around it rather than to the next one.
 	if it, ok := box.around(c.span); ok {
-		if c.ownLine {
-			return core.KindInline, it, true
-		}
-		return core.KindTrailing, it, true
+		return inside(c), it, true
 	}
 	if run, ok := w.paragraph(box, c); ok {
 		return core.KindInline, run, true
@@ -370,7 +367,21 @@ func (w *walker) code(c comment) (core.Kind, span, bool) {
 	if it, ok := box.before(c.start); ok {
 		return core.KindTrailing, it, true
 	}
+	// A comment alone in an empty body, such as a function's, is graded
+	// against what holds the body rather than skipped.
+	for i := box.parent; i >= 0; i = w.containers[i].parent {
+		if it, ok := w.containers[i].around(c.span); ok {
+			return inside(c), it, true
+		}
+	}
 	return "", span{}, false
+}
+
+func inside(c comment) core.Kind {
+	if c.ownLine {
+		return core.KindInline
+	}
+	return core.KindTrailing
 }
 
 // innermost climbs from the last container to start before s: the walk
@@ -391,7 +402,7 @@ func (w *walker) innermost(s span) container {
 	if len(w.containers) > 0 {
 		return w.containers[0]
 	}
-	return container{}
+	return container{parent: -1}
 }
 
 // from is the index of the first item starting at or after offset.
