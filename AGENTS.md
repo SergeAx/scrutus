@@ -60,8 +60,9 @@ cache, the baseline, CI integrations or users' trust.
   version — never file path or line.
 - Spans are byte offsets, never line/column.
 - Rule ids (`wrong-comment`, `useless-comment`, `redundant-annotation`,
-  `weak-comment`, `wide-scope`, `low-confidence`, `fix-aborted`) are a public
-  contract consumed by SARIF, baselines and `--fail-on`. Never rename them.
+  `weak-comment`, `wide-scope`, `low-confidence`, `commented-out-code`,
+  `fix-aborted`) are a public contract consumed by SARIF, baselines and
+  `--fail-on`. Never rename them.
 - The JSON report is canonical and every other format is a projection of it.
   Schema changes bump `schema_version`; rubric wording changes bump
   `rubricVersion`.

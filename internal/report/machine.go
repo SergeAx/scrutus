@@ -303,6 +303,10 @@ func (Checkstyle) Report(w io.Writer, results []core.Result, _ core.RunInfo) err
 
 func message(r core.Result) string {
 	v := r.Verdict
+	if r.Rule == core.RuleCommentedOutCode {
+		return fmt.Sprintf("%s (probability %.0f%%): %s",
+			ruleDescription(r.Rule), 100*v.CommentedOut.Prob, snippet(r.Finding.CommentText, 80))
+	}
 	return fmt.Sprintf("%s (accuracy %d%%, usefulness %d%%): %s",
 		ruleDescription(r.Rule), v.Accuracy.Pct, v.Usefulness.Pct, snippet(r.Finding.CommentText, 80))
 }
@@ -321,6 +325,8 @@ func ruleDescription(rule string) string {
 		return "comment is scoped wider than the code it pairs with"
 	case core.RuleLowConfidence:
 		return "verdict below the confidence threshold"
+	case core.RuleCommentedOutCode:
+		return "comment is disabled code, not prose"
 	case core.RuleFixAborted:
 		return "edits discarded: the file stopped parsing"
 	}

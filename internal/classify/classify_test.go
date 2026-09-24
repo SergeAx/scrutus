@@ -164,3 +164,45 @@ func TestEachLanguageAnswersToItsOwnKeepSetting(t *testing.T) {
 		})
 	}
 }
+
+func TestCommentedOutCode(t *testing.T) {
+	disabled := func(prob float64) core.Verdict {
+		v := verdict(5, 5, 0.3, 0.1)
+		v.CommentedOut.Prob = prob
+		return v
+	}
+	strict := func(c *config.Config) { c.Profile = "strict" }
+	cases := []struct {
+		name     string
+		finding  core.Finding
+		verdict  core.Verdict
+		mutate   func(*config.Config)
+		action   core.Action
+		severity core.Severity
+		rule     string
+	}{
+		{"ignored by default, whatever the axes say", core.Finding{}, disabled(0.9), nil,
+			core.ActionKeep, core.SeverityNone, ""},
+		{"deleted under strict", core.Finding{}, disabled(0.9), strict,
+			core.ActionDelete, core.SeverityWarning, core.RuleCommentedOutCode},
+		{"deleted when the config asks, under any profile", core.Finding{}, disabled(0.9),
+			func(c *config.Config) { c.Comments.CommentedOutCode = "delete" },
+			core.ActionDelete, core.SeverityWarning, core.RuleCommentedOutCode},
+		{"kept when the config asks, under strict", core.Finding{}, disabled(0.9),
+			func(c *config.Config) { c.Profile = "strict"; c.Comments.CommentedOutCode = "ignore" },
+			core.ActionKeep, core.SeverityNone, ""},
+		{"a protected doc comment is reported, not deleted", core.Finding{Kind: core.KindDoc, Protected: true}, disabled(0.9), strict,
+			core.ActionFlag, core.SeverityWarning, core.RuleCommentedOutCode},
+		{"below the guard the axes decide", core.Finding{}, disabled(0.6), strict,
+			core.ActionFlag, core.SeverityInfo, core.RuleLowConfidence},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classify.Classify(tc.finding, tc.verdict, resolved(t, tc.mutate))
+			if got.Action != tc.action || got.Severity != tc.severity || got.Rule != tc.rule {
+				t.Errorf("got %s/%s/%s, want %s/%s/%s",
+					got.Action, got.Severity, got.Rule, tc.action, tc.severity, tc.rule)
+			}
+		})
+	}
+}

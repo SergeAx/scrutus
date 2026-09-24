@@ -138,6 +138,7 @@ func TestCheckClassifiesSampleFile(t *testing.T) {
 	for _, fragment := range []string{
 		"Stripe rejects references longer than 40 bytes",
 		"AmountCents is the amount in minor units",
+		"strings.TrimPrefix",
 	} {
 		if result, ok := find(report.Results, fragment); ok && result.Action != core.ActionKeep {
 			t.Errorf("%q: %s, want keep", fragment, result.Rule)
@@ -337,6 +338,7 @@ func TestFixDeletesOnlyUselessComments(t *testing.T) {
 		"// Stripe rejects references longer than 40 bytes",
 		"//scrutus:ignore",
 		"// TODO: support partial refunds",
+		"// reference = strings.TrimPrefix",
 	} {
 		if !strings.Contains(text, kept) {
 			t.Errorf("%q was deleted", kept)
@@ -344,6 +346,45 @@ func TestFixDeletesOnlyUselessComments(t *testing.T) {
 	}
 	if len(after) >= len(before) {
 		t.Errorf("file did not shrink: %d -> %d bytes", len(before), len(after))
+	}
+	if !parses(t, after) {
+		t.Error("the edited file no longer parses")
+	}
+}
+
+func TestStrictFixDeletesCommentedOutCode(t *testing.T) {
+	outsideCI(t)
+	assessor, _ := stubAssessor(t)
+	dir := copySample(t)
+
+	var out bytes.Buffer
+	report, err := scrutus.Run(context.Background(), scrutus.Options{
+		Mode:     scrutus.ModeFix,
+		Paths:    []string{dir},
+		Profile:  "strict",
+		Format:   "text",
+		NoCache:  true,
+		NoDotenv: true,
+		Assessor: assessor,
+		Out:      &out,
+	})
+	if err != nil {
+		t.Fatalf("fix: %v", err)
+	}
+
+	result, ok := find(report.Results, "strings.TrimPrefix")
+	if !ok || result.Action != core.ActionDelete || result.Rule != core.RuleCommentedOutCode {
+		t.Fatalf("commented-out code: %+v, want delete/%s", result, core.RuleCommentedOutCode)
+	}
+	if !strings.Contains(out.String(), "93%  probability the comment is commented-out code") {
+		t.Errorf("text report shows no probability:\n%s", out.String())
+	}
+	after, err := os.ReadFile(samplePath(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(after), "strings.TrimPrefix") {
+		t.Error("the commented-out code survived fix")
 	}
 	if !parses(t, after) {
 		t.Error("the edited file no longer parses")

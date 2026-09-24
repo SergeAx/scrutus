@@ -200,6 +200,7 @@ context_lines = 20            # enclosing-function context cap
 keep_exported_docs = true     # Go: exported symbols keep their doc comment; PHP: docblocks on declarations
 keep_docstrings = true        # Python: docstrings are never deleted
 delete_annotations = false    # redundant annotations are flagged, not deleted
+# commented_out_code = "delete" # ignore | delete; unset, the profile decides (§6)
 
 [cache]
 dir = "~/.cache/scrutus"
@@ -382,7 +383,9 @@ All policy is local Go code over the two percentages and confidences; the model 
 
 ```mermaid
 flowchart TD
-  V[Verdict] --> C{confidence <<br/>min_confidence?}
+  V[Verdict] --> X{commented_out<br/>>= 0.7?}
+  X -- yes --> XD[Keep, or Delete<br/>under strict]
+  X -- no --> C{confidence <<br/>min_confidence?}
   C -- yes --> I[Info: low confidence]
   C -- no --> O{inline and<br/>overreach >= 0.8?}
   O -- yes --> OI[Info: comment<br/>scoped wider than code]
@@ -395,10 +398,13 @@ flowchart TD
   W -- no --> K[Keep, none]
 ```
 
+The commented-out guard runs first, because disabled code has no prose for the axes to grade: their scores and confidences say nothing about it, and without the guard it would mostly surface as `wrong-comment` errors. Such a comment is ignored, or under `comments.commented_out_code = "delete"`, the `strict` profile's default, deleted with rule `commented-out-code`; a comment the keep settings or the syntax protect is flagged instead. Its threshold comes from a run over a Laravel repo, where Jev put all 14 hand-checked blocks of disabled code between 0.73 and 0.91 and no prose above 0.58. Between the two sat an `import` line at 0.68, which the guard misses, and two comments mixing code with prose; a miss only means the comment is graded as prose, while a false hit could delete prose.
+
 The overreach guard runs before the axes: a section-header comment that summarizes a whole function will score poorly against its own paragraph, and without the guard it would be flagged as wrong. It skips doc comments, whose paired code is the declaration they describe — breadth is their job, and measured probabilities for them sit close to the threshold anyway (§12.3). Such comments are reported as info with rule `wide-scope` so a human can decide whether to move or trim them. Accuracy is then checked before Usefulness: a wrong comment is an error even if it is also useless, and it is never auto-deleted, because deleting hides a signal that something else may also be wrong.
 
 | Condition (defaults) | Action | Severity | Rule id |
 | --- | --- | --- | --- |
+| commented-out probability ≥ 0.7 | Keep; Delete under `strict` | warning | `commented-out-code` |
 | confidence on the deciding axis < 0.5 | Flag | info | `low-confidence` |
 | overreach probability ≥ 0.8, except on a doc comment | Flag | info | `wide-scope` |
 | accuracy ≤ 30 | Flag | error | `wrong-comment` |
@@ -413,11 +419,11 @@ Annotations are graded like any other comment, because an annotation restates th
 
 **Profiles.** `--profile`, or `profile` in config, selects a threshold set. Individual `[thresholds]` values override the profile, and flags override both.
 
-| Profile | accuracy error / warning | usefulness delete / warning | min_confidence |
-| --- | --- | --- | --- |
-| `strict` | 40 / 70 | 25 / 45 | 0.4 |
-| `default` | 30 / 60 | 15 / 35 | 0.5 |
-| `lenient` | 20 / 45 | 8 / 20 | 0.65 |
+| Profile | accuracy error / warning | usefulness delete / warning | min_confidence | commented-out code |
+| --- | --- | --- | --- | --- |
+| `strict` | 40 / 70 | 25 / 45 | 0.4 | delete |
+| `default` | 30 / 60 | 15 / 35 | 0.5 | ignore |
+| `lenient` | 20 / 45 | 8 / 20 | 0.65 | ignore |
 
 ## 7. Output
 

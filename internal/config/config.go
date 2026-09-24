@@ -3,6 +3,7 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -64,7 +65,14 @@ type Comments struct {
 	KeepExportedDocs     *bool    `toml:"keep_exported_docs"`
 	KeepDocstrings       *bool    `toml:"keep_docstrings"`
 	DeleteAnnotations    bool     `toml:"delete_annotations"`
+	CommentedOutCode     string   `toml:"commented_out_code"`
 }
+
+// What classify does with a comment Jev takes for disabled code.
+const (
+	CommentedOutIgnore = "ignore"
+	CommentedOutDelete = "delete"
+)
 
 type CacheConfig struct {
 	Dir    string   `toml:"dir"`
@@ -96,12 +104,13 @@ type Profile struct {
 	UsefulnessDelete int
 	UsefulnessWarn   int
 	MinConfidence    float64
+	CommentedOutCode string
 }
 
 var profiles = map[string]Profile{
-	"strict":  {"strict", 40, 70, 25, 45, 0.4},
-	"default": {"default", 30, 60, 15, 35, 0.5},
-	"lenient": {"lenient", 20, 45, 8, 20, 0.65},
+	"strict":  {"strict", 40, 70, 25, 45, 0.4, CommentedOutDelete},
+	"default": {"default", 30, 60, 15, 35, 0.5, CommentedOutIgnore},
+	"lenient": {"lenient", 20, 45, 8, 20, 0.65, CommentedOutIgnore},
 }
 
 func ProfileNames() []string { return []string{"strict", "default", "lenient"} }
@@ -115,6 +124,7 @@ type Resolved struct {
 	UsefulnessDelete int
 	UsefulnessWarn   int
 	MinConfidence    float64
+	CommentedOutCode string
 }
 
 func Defaults() Config {
@@ -270,6 +280,9 @@ func merge(dst *Config, src Config) {
 		dst.Comments.KeepDocstrings = src.Comments.KeepDocstrings
 	}
 	dst.Comments.DeleteAnnotations = src.Comments.DeleteAnnotations
+	if src.Comments.CommentedOutCode != "" {
+		dst.Comments.CommentedOutCode = src.Comments.CommentedOutCode
+	}
 	if src.Cache.Dir != "" {
 		dst.Cache.Dir = src.Cache.Dir
 	}
@@ -314,6 +327,11 @@ func (c Config) Resolve() (Resolved, error) {
 		UsefulnessDelete: profile.UsefulnessDelete,
 		UsefulnessWarn:   profile.UsefulnessWarn,
 		MinConfidence:    profile.MinConfidence,
+		CommentedOutCode: cmp.Or(c.Comments.CommentedOutCode, profile.CommentedOutCode),
+	}
+	if r.CommentedOutCode != CommentedOutIgnore && r.CommentedOutCode != CommentedOutDelete {
+		return Resolved{}, fmt.Errorf("unknown comments.commented_out_code %q, want %s or %s",
+			r.CommentedOutCode, CommentedOutIgnore, CommentedOutDelete)
 	}
 	if v := c.Thresholds.Accuracy.Error; v != nil {
 		r.AccuracyError = *v

@@ -12,9 +12,18 @@ import (
 // scoped wider than its paired code rather than as wrong about it.
 const OverreachGuard = 0.8
 
+// CommentedOutGuard is the probability above which a comment is treated as
+// disabled code rather than prose.
+const CommentedOutGuard = 0.7
+
 func Classify(f core.Finding, v core.Verdict, cfg config.Resolved) core.Result {
 	r := core.Result{Finding: f, Verdict: v, Action: core.ActionKeep}
 
+	// Disabled code has no prose for the axes to grade, so neither their
+	// scores nor their confidences mean anything here.
+	if v.CommentedOut.Prob >= CommentedOutGuard {
+		return commentedOut(r, f, cfg)
+	}
 	if deciding(v) < cfg.MinConfidence {
 		return flag(r, core.SeverityInfo, core.RuleLowConfidence)
 	}
@@ -53,6 +62,19 @@ func useless(r core.Result, f core.Finding, cfg config.Resolved) core.Result {
 	r.Action = core.ActionDelete
 	r.Severity = core.SeverityWarning
 	r.Rule = core.RuleUselessComment
+	return r
+}
+
+func commentedOut(r core.Result, f core.Finding, cfg config.Resolved) core.Result {
+	if cfg.CommentedOutCode != config.CommentedOutDelete {
+		return r
+	}
+	if f.Required || (f.Protected && keeps(f, cfg)) {
+		return flag(r, core.SeverityWarning, core.RuleCommentedOutCode)
+	}
+	r.Action = core.ActionDelete
+	r.Severity = core.SeverityWarning
+	r.Rule = core.RuleCommentedOutCode
 	return r
 }
 

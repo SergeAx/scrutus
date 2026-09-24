@@ -178,3 +178,43 @@ func TestFindStopsAtTheRepoRoot(t *testing.T) {
 		t.Errorf("found %q above the repo root", found)
 	}
 }
+
+func TestCommentedOutCodeFollowsTheProfileUnlessSet(t *testing.T) {
+	for profile, want := range map[string]string{"strict": "delete", "default": "ignore", "lenient": "ignore"} {
+		cfg := config.Defaults()
+		cfg.Profile = profile
+		resolved, err := cfg.Resolve()
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if resolved.CommentedOutCode != want {
+			t.Errorf("%s: commented_out_code = %q, want %q", profile, resolved.CommentedOutCode, want)
+		}
+	}
+
+	cfg, err := config.Load(write(t, `
+profile = "strict"
+
+[comments]
+commented_out_code = "ignore"
+`))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	resolved, err := cfg.Resolve()
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if resolved.CommentedOutCode != "ignore" {
+		t.Errorf("commented_out_code = %q, want the explicit ignore", resolved.CommentedOutCode)
+	}
+}
+
+func TestUnknownCommentedOutCodePolicyIsAnError(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Comments.CommentedOutCode = "remove"
+
+	if _, err := cfg.Resolve(); err == nil {
+		t.Fatal("an unknown commented_out_code policy was accepted")
+	}
+}

@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/SergeAx/scrutus/internal/core"
@@ -20,8 +21,13 @@ func (t Text) Report(w io.Writer, results []core.Result, run core.RunInfo) error
 			f.File, f.Line, f.Column,
 			t.paint(severityColor(r.Severity), strings.ToUpper(string(r.Severity))),
 			action(r.Action), r.Rule)
-		fmt.Fprintf(w, "    accuracy   %s %3d%%  %s\n", bar(v.Accuracy.Pct), v.Accuracy.Pct, v.Accuracy.Label)
-		fmt.Fprintf(w, "    usefulness %s %3d%%  %s\n", bar(v.Usefulness.Pct), v.Usefulness.Pct, v.Usefulness.Label)
+		if r.Rule == core.RuleCommentedOutCode {
+			pct := int(math.Round(100 * v.CommentedOut.Prob))
+			fmt.Fprintf(w, "    disabled   %s %3d%%  probability the comment is commented-out code\n", bar(pct), pct)
+		} else {
+			fmt.Fprintf(w, "    accuracy   %s %3d%%  %s\n", bar(v.Accuracy.Pct), v.Accuracy.Pct, v.Accuracy.Label)
+			fmt.Fprintf(w, "    usefulness %s %3d%%  %s\n", bar(v.Usefulness.Pct), v.Usefulness.Pct, v.Usefulness.Label)
+		}
 		fmt.Fprintf(w, "    comment    %s\n", snippet(f.CommentText, 100))
 		fmt.Fprintf(w, "    code       %s\n\n", snippet(f.CodeText, 100))
 	}

@@ -131,7 +131,7 @@ setting.
 A doc comment is judged against the whole declaration it documents. An inline
 comment is judged against the paragraph of code below it, up to the next blank
 line. A trailing comment is judged against the statement on its line. Jev
-answers three questions about each pair:
+answers four questions about each pair:
 
 - **Accuracy**: is it fundamentally wrong, materially misleading, roughly
   correct, or accurate?
@@ -139,11 +139,14 @@ answers three questions about each pair:
   edge case, or context without which the code would be misread?
 - **Overreach**: does it describe code outside its pair, such as the whole
   function?
+- **Commented out**: is it disabled code rather than prose? Annotation tags are
+  not asked.
 
 The first matching rule wins, in this order:
 
 | Rule | Severity | Action | When, under the default profile |
 | --- | --- | --- | --- |
+| `commented-out-code` | warning | delete | Commented out 0.7 or higher; only under `strict` |
 | `low-confidence` | info | flag | Model confidence below 0.5 |
 | `wide-scope` | info | flag | Overreach 0.8 or higher, except on doc comments |
 | `wrong-comment` | error | flag | Accuracy 30% or lower |
@@ -151,10 +154,12 @@ The first matching rule wins, in this order:
 | `redundant-annotation` | warning | flag | A useless `@param`, `@var` or similar tag |
 | `weak-comment` | warning | flag | Accuracy 60% or lower, or usefulness 35% or lower |
 
-Wrong comments are never deleted automatically, because one may be the only
-sign that the code next to it is wrong too. A useless doc comment on an
-exported Go identifier or a Python docstring is reported as `weak-comment`
-instead of being deleted.
+Commented-out code is skipped under the default and `lenient` profiles and
+deleted under `strict`; set `commented_out_code = "ignore"` or `"delete"` under
+`[comments]` to choose regardless of profile. Wrong comments are never deleted
+automatically, because one may be the only sign that the code next to it is
+wrong too. A useless doc comment on an exported Go identifier or a Python
+docstring is reported as `weak-comment` instead of being deleted.
 If deleting comments leaves a file that no longer parses, scrutus keeps the
 original file and reports `fix-aborted`. The
 [design spec](docs/design_spec.0.1.md#6-classification-and-policy) explains the

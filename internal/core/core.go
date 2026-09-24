@@ -122,6 +122,7 @@ const (
 	RuleWeakComment         = "weak-comment"
 	RuleWideScope           = "wide-scope"
 	RuleLowConfidence       = "low-confidence"
+	RuleCommentedOutCode    = "commented-out-code"
 	RuleFixAborted          = "fix-aborted"
 )
 

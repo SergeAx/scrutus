@@ -65,6 +65,14 @@
       "confidence": 0.94
     },
     {
+      "match": "strings.TrimPrefix",
+      "accuracy": 0.2,
+      "usefulness": 0.3,
+      "overreach": 0.05,
+      "commented_out": 0.93,
+      "confidence": 0.9
+    },
+    {
       "match": "ErrRefunded is returned when an order was already refunded",
       "accuracy": 2.9,
       "usefulness": 1.1,

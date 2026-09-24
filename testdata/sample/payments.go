@@ -42,6 +42,7 @@ func Settle(c Charge, refunded bool) (string, error) {
 	reference = strings.ToUpper(reference)
 	reference = strings.ReplaceAll(reference, "-", "")
 
+	// reference = strings.TrimPrefix(reference, "ORD")
 	return fmt.Sprintf("LDG-%s", reference), nil
 }
 
