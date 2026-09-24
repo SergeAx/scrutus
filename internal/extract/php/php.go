@@ -123,11 +123,12 @@ func (w *walker) collectTokens(tok *token.Token) {
 		if free.Position == nil {
 			continue
 		}
+		text := strings.TrimRight(string(free.Value), " \t\r\n")
 		w.comments = append(w.comments, comment{
 			start:  free.Position.StartPos,
-			end:    free.Position.EndPos,
+			end:    free.Position.StartPos + len(text),
 			line:   free.Position.StartLine,
-			text:   strings.TrimRight(string(free.Value), " \t\r\n"),
+			text:   text,
 			isDoc:  free.ID == token.T_DOC_COMMENT,
 			column: w.column(free.Position.StartPos),
 		})

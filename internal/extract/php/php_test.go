@@ -148,6 +148,17 @@ func TestLineAndTrailingComments(t *testing.T) {
 	}
 }
 
+func TestLineCommentSpansStopBeforeTheLineBreak(t *testing.T) {
+	for comment, f := range findings(t) {
+		if strings.HasPrefix(comment, "/*") {
+			continue
+		}
+		if got := src[f.Comment.Start:f.Comment.End]; strings.HasSuffix(got, "\n") {
+			t.Errorf("%q: span %q runs into the next line", comment, got)
+		}
+	}
+}
+
 // An inline `/** @var Foo $bar */` types a local variable, so it pairs with the
 // statement below it, never with the next method.
 func TestInlineVarDocblockPairsWithTheStatement(t *testing.T) {
