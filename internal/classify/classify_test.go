@@ -26,7 +26,7 @@ func verdict(accuracy, usefulness int, confidence, overreach float64) core.Verdi
 	return core.Verdict{
 		Accuracy:   core.Axis{Pct: accuracy, Confidence: confidence},
 		Usefulness: core.Axis{Pct: usefulness, Confidence: confidence},
-		Overreach:  core.Overreach{Prob: overreach},
+		Overreach:  core.Noul{Prob: overreach},
 	}
 }
 

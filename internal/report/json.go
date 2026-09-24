@@ -48,20 +48,20 @@ type jsonRun struct {
 }
 
 type jsonResult struct {
-	ID         string        `json:"id"`
-	File       string        `json:"file"`
-	Line       int           `json:"line"`
-	Column     int           `json:"column"`
-	Span       core.Span     `json:"span"`
-	Kind       string        `json:"kind"`
-	Rule       string        `json:"rule"`
-	Severity   string        `json:"severity"`
-	Action     string        `json:"action"`
-	Accuracy   jsonAxis      `json:"accuracy"`
-	Usefulness jsonAxis      `json:"usefulness"`
-	Overreach  jsonOverreach `json:"overreach"`
-	Comment    string        `json:"comment"`
-	Code       string        `json:"code"`
+	ID         string    `json:"id"`
+	File       string    `json:"file"`
+	Line       int       `json:"line"`
+	Column     int       `json:"column"`
+	Span       core.Span `json:"span"`
+	Kind       string    `json:"kind"`
+	Rule       string    `json:"rule"`
+	Severity   string    `json:"severity"`
+	Action     string    `json:"action"`
+	Accuracy   jsonAxis  `json:"accuracy"`
+	Usefulness jsonAxis  `json:"usefulness"`
+	Overreach  jsonNoul  `json:"overreach"`
+	Comment    string    `json:"comment"`
+	Code       string    `json:"code"`
 }
 
 type jsonAxis struct {
@@ -70,7 +70,7 @@ type jsonAxis struct {
 	Confidence float64 `json:"confidence"`
 }
 
-type jsonOverreach struct {
+type jsonNoul struct {
 	Prob float64 `json:"prob"`
 }
 
@@ -101,7 +101,7 @@ func (JSON) Report(w io.Writer, results []core.Result, run core.RunInfo) error {
 			Rule: r.Rule, Severity: string(r.Severity), Action: string(r.Action),
 			Accuracy:   jsonAxis{v.Accuracy.Pct, v.Accuracy.Label, v.Accuracy.Confidence},
 			Usefulness: jsonAxis{v.Usefulness.Pct, v.Usefulness.Label, v.Usefulness.Confidence},
-			Overreach:  jsonOverreach{v.Overreach.Prob},
+			Overreach:  jsonNoul{v.Overreach.Prob},
 			Comment:    snippet(f.CommentText, 200),
 			Code:       snippet(f.CodeText, 200),
 		})

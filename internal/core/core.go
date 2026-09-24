@@ -76,7 +76,7 @@ type Axis struct {
 	Confidence float64 `json:"confidence"`
 }
 
-type Overreach struct {
+type Noul struct {
 	Prob float64 `json:"prob"`
 }
 
@@ -89,7 +89,7 @@ type Verdict struct {
 	FindingID  string
 	Accuracy   Axis
 	Usefulness Axis
-	Overreach  Overreach
+	Overreach  Noul
 	Usage      Usage
 	Model      string
 }

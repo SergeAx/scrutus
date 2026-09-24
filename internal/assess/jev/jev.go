@@ -220,7 +220,7 @@ func (a *Assessor) assessBlock(ctx context.Context, findings []core.Finding) ([]
 			FindingID:  f.ID,
 			Accuracy:   toAxis(accuracy, assess.Levels),
 			Usefulness: toAxis(usefulness, assess.Levels),
-			Overreach:  core.Overreach{Prob: overreach.Noul},
+			Overreach:  core.Noul{Prob: overreach.Noul},
 			Usage:      perFinding,
 			Model:      resp.Model,
 		})
