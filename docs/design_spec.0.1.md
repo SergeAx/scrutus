@@ -592,11 +592,11 @@ Go and PHP parse in pure Go, so both ride in every build, including `go install`
 | --- | --- |
 | No API key | Exit 2, naming the variable and the two `.env` paths searched; `--soft-fail` → exit 0 with a warning |
 | Jev 401/403 | Exit 2, never retried |
-| Jev 429/5xx after retries | Exit 2; verdicts obtained so far are still cached and reported |
+| Jev 429/5xx after retries | Exit 2; verdicts obtained so far are still cached and reported, and `fix` and `baseline` write nothing |
 | Configured language missing from this build | Exit 2, naming the language and the build that has it |
 | `fix` invoked in CI without `--allow-ci-write` | Exit 2, with the `check --format sarif` alternative in the message |
 | Parse error in a file | File skipped with a warning; not fatal |
-| Budget exceeded | Exit 3; partial results reported, marked `incomplete: true` in JSON |
+| Budget exceeded | Exit 3; partial results reported, marked `incomplete: true` in JSON, and `fix` and `baseline` write nothing |
 | Cache corrupt | Cache recreated, warning logged, run continues uncached |
 
 ### 12.3 Open questions

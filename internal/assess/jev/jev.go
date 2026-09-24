@@ -55,22 +55,17 @@ func (a *Assessor) Assess(ctx context.Context, findings []core.Finding) ([]core.
 	for i, batch := range batches {
 		g.Go(func() error {
 			got, err := a.assessBlock(ctx, batch.findings)
-			if err != nil {
-				return err
-			}
 			verdicts[i] = got
-			return nil
+			return err
 		})
 	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
+	err := g.Wait()
 
 	var all []core.Verdict
 	for _, got := range verdicts {
 		all = append(all, got...)
 	}
-	return all, nil
+	return all, err
 }
 
 // Jev bills about a token per 3.6 bytes of state and question text, plus about

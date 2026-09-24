@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,11 +26,22 @@ func stubAssessor(t *testing.T) (assess.Assessor, *jevstub.Server) {
 
 func stubAssessorFrom(t *testing.T, fixture string) (assess.Assessor, *jevstub.Server) {
 	t.Helper()
+	return stubAssessorWith(t, loadFixtures(t, fixture), 0)
+}
+
+func loadFixtures(t *testing.T, fixture string) jevstub.Fixtures {
+	t.Helper()
 
 	fixtures, err := jevstub.Load(filepath.Join("..", "..", "testdata", "jev", fixture))
 	if err != nil {
 		t.Fatalf("fixtures: %v", err)
 	}
+	return fixtures
+}
+
+func stubAssessorWith(t *testing.T, fixtures jevstub.Fixtures, budgetUSD float64) (assess.Assessor, *jevstub.Server) {
+	t.Helper()
+
 	server := jevstub.New(fixtures)
 	t.Cleanup(server.Close)
 
@@ -45,7 +57,7 @@ func stubAssessorFrom(t *testing.T, fixture string) (assess.Assessor, *jevstub.S
 	if err != nil {
 		t.Fatalf("rubric: %v", err)
 	}
-	return jev.New(client, rubric, 4, 0), server
+	return jev.New(client, rubric, 4, budgetUSD), server
 }
 
 // copySample clones the sample corpus into a scratch directory, so fix can
@@ -437,6 +449,33 @@ func TestBudgetRefusesBeforeTheFirstRequest(t *testing.T) {
 	}
 	if server.Requests() != 0 {
 		t.Errorf("%d requests were made despite the budget", server.Requests())
+	}
+}
+
+func TestBudgetStopReportsWhatWasScored(t *testing.T) {
+	fixtures := loadFixtures(t, "payments.json")
+	fixtures.InputTokens = 100_000
+	assessor, _ := stubAssessorWith(t, fixtures, 0.005)
+	var out bytes.Buffer
+	report, err := scrutus.Run(context.Background(), scrutus.Options{
+		Mode:     scrutus.ModeCheck,
+		Paths:    []string{copySample(t)},
+		Format:   "json",
+		NoCache:  true,
+		NoDotenv: true,
+		Assessor: assessor,
+		Out:      &out,
+	})
+
+	if !errors.Is(err, scrutus.ErrBudget) {
+		t.Fatalf("err = %v, want a budget stop", err)
+	}
+	if !report.Run.Incomplete || len(report.Results) == 0 {
+		t.Errorf("incomplete = %v with %d results, want the scored ones marked incomplete",
+			report.Run.Incomplete, len(report.Results))
+	}
+	if !strings.Contains(out.String(), `"incomplete"`) {
+		t.Errorf("the report does not say it is incomplete:\n%s", out.String())
 	}
 }
 

@@ -80,7 +80,7 @@ type Report struct {
 }
 
 var (
-	ErrBudget    = errors.New("budget exceeded")
+	ErrBudget    = jev.ErrBudget
 	ErrNoAPIKey  = errors.New("no API key")
 	ErrCIWrite   = errors.New("fix refuses to write in CI")
 	ErrSoftFiled = errors.New("soft-failed")
@@ -183,6 +183,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	}
 
 	fresh := map[string]bool{}
+	var stopped error
 	if len(pending) > 0 {
 		if err := withinBudget(pending, rubric, opts.BudgetCents); err != nil {
 			return Report{}, err
@@ -199,10 +200,10 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 		run.Requests = assessor.Requests()
 		if err != nil {
 			run.Incomplete = true
-			if !opts.SoftFail || !transportFailure(err) {
-				return Report{}, err
+			if opts.SoftFail && transportFailure(err) {
+				return Report{Run: run}, fmt.Errorf("%w: %v", ErrSoftFiled, err)
 			}
-			return Report{Run: run}, fmt.Errorf("%w: %v", ErrSoftFiled, err)
+			stopped = err
 		}
 	}
 
@@ -224,6 +225,13 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	run.UsageUnknown = run.Assessed > 0 && run.InputTokens == 0
 
 	out := Report{Results: results, Run: run, Worst: report.Worst(results)}
+
+	// Verdicts already paid for are reported, but nothing is fixed or
+	// baselined from a run that did not score every comment.
+	if stopped != nil {
+		out.Run.DurationMS = time.Since(started).Milliseconds()
+		return out, errors.Join(stopped, emit(opts, out))
+	}
 
 	if opts.Mode == ModeFix {
 		applied, err := fix.Apply(results, sources, fix.Options{
