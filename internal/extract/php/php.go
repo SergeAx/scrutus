@@ -39,6 +39,7 @@ type comment struct {
 
 type walker struct {
 	src        []byte
+	lineStarts []int
 	comments   []comment
 	stripped   *extract.Stripped
 	statements []span // every statement in a body, for the paragraph rule
@@ -59,7 +60,12 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 		return nil, nil
 	}
 
-	w := &walker{src: src, seen: map[*token.Token]bool{}, options: opts}
+	w := &walker{src: src, lineStarts: []int{0}, seen: map[*token.Token]bool{}, options: opts}
+	for i, b := range src {
+		if b == '\n' {
+			w.lineStarts = append(w.lineStarts, i+1)
+		}
+	}
 	w.walk(reflect.ValueOf(root), false)
 	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
 	slices.SortFunc(w.statements, byStart)
@@ -334,14 +340,13 @@ func (w *walker) enclosingDecl(code core.Span) (span, bool) {
 }
 
 func (w *walker) line(offset int) int {
-	offset = clamp(offset, len(w.src))
-	return strings.Count(string(w.src[:offset]), "\n") + 1
+	n, _ := slices.BinarySearch(w.lineStarts, clamp(offset, len(w.src))+1)
+	return n
 }
 
 func (w *walker) column(offset int) int {
 	offset = clamp(offset, len(w.src))
-	lineStart := strings.LastIndexByte(string(w.src[:offset]), '\n') + 1
-	return offset - lineStart + 1
+	return offset - w.lineStarts[w.line(offset)-1] + 1
 }
 
 func clamp(v, limit int) int { return max(0, min(v, limit)) }
