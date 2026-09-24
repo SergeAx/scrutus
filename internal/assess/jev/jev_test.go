@@ -21,13 +21,13 @@ import (
 var billed = []struct {
 	state, prose, tags, copies, tokens int
 }{
-	{state: 558, prose: 1, copies: 1, tokens: 686},
-	{state: 372, tags: 1, copies: 1, tokens: 685},
-	{state: 313, prose: 1, tags: 1, copies: 1, tokens: 958},
-	{state: 607, tags: 2, copies: 1, tokens: 1080},
-	{state: 528, tags: 3, copies: 1, tokens: 1365},
-	{state: 348, tags: 4, copies: 1, tokens: 1680},
-	{state: 595, prose: 1, copies: 5, tokens: 675},
+	{state: 597, prose: 1, copies: 1, tokens: 755},
+	{state: 403, tags: 1, copies: 1, tokens: 719},
+	{state: 348, prose: 1, tags: 1, copies: 1, tokens: 1074},
+	{state: 678, tags: 2, copies: 1, tokens: 1144},
+	{state: 655, tags: 3, copies: 1, tokens: 1494},
+	{state: 526, tags: 4, copies: 1, tokens: 1792},
+	{state: 454, prose: 1, copies: 2, tokens: 708},
 }
 
 func TestEstimateTracksWhatJevBilled(t *testing.T) {
@@ -48,7 +48,7 @@ func TestEstimateTracksWhatJevBilled(t *testing.T) {
 			}
 			for i := range b.tags {
 				slot := "a" + strconv.Itoa(i+1)
-				findings = append(findings, core.Finding{ID: slot, Block: "b", BlockText: comment, Slot: slot})
+				findings = append(findings, core.Finding{ID: slot, Kind: core.KindAnnotation, Block: "b", BlockText: comment, Slot: slot})
 			}
 		}
 
@@ -59,8 +59,10 @@ func TestEstimateTracksWhatJevBilled(t *testing.T) {
 	}
 }
 
-func TestALargeBlockIsSplitAcrossRequests(t *testing.T) {
-	server := jevstub.New(jevstub.Fixtures{})
+func stubbed(t *testing.T, fixtures jevstub.Fixtures) (*jev.Assessor, *jevstub.Server) {
+	t.Helper()
+
+	server := jevstub.New(fixtures)
 	t.Cleanup(server.Close)
 	client, err := typesafe.New(
 		typesafe.WithAPIKey("test-key"),
@@ -74,14 +76,19 @@ func TestALargeBlockIsSplitAcrossRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return jev.New(client, rubric, 4, 0), server
+}
+
+func TestALargeBlockIsSplitAcrossRequests(t *testing.T) {
+	assessor, server := stubbed(t, jevstub.Fixtures{})
 
 	const tags = 200
 	var findings []core.Finding
 	for i := range tags {
 		slot := "a" + strconv.Itoa(i+1)
-		findings = append(findings, core.Finding{ID: slot, Block: "b", BlockText: "/** @property int $id */", Slot: slot})
+		findings = append(findings, core.Finding{ID: slot, Kind: core.KindAnnotation, Block: "b", BlockText: "/** @property int $id */", Slot: slot})
 	}
-	verdicts, err := jev.New(client, rubric, 4, 0).Assess(context.Background(), findings)
+	verdicts, err := assessor.Assess(context.Background(), findings)
 	if err != nil {
 		t.Fatalf("assess: %v", err)
 	}
@@ -91,5 +98,31 @@ func TestALargeBlockIsSplitAcrossRequests(t *testing.T) {
 	}
 	if server.Requests() < 2 {
 		t.Errorf("%d request for %d tags, want the block split", server.Requests(), tags)
+	}
+}
+
+func TestOnlyProseIsAskedWhetherItIsCode(t *testing.T) {
+	assessor, _ := stubbed(t, jevstub.Fixtures{Default: jevstub.Recorded{CommentedOut: 0.9}})
+
+	block := `/**
+ * Finds the order by its ID.
+>>> A1
+ * @param int $id
+<<< A1
+ */`
+	verdicts, err := assessor.Assess(context.Background(), []core.Finding{
+		{ID: "prose", Kind: core.KindDoc, Block: "b", BlockText: block},
+		{ID: "tag", Kind: core.KindAnnotation, Block: "b", BlockText: block, Slot: "a1"},
+	})
+	if err != nil {
+		t.Fatalf("assess: %v", err)
+	}
+
+	got := map[string]float64{}
+	for _, v := range verdicts {
+		got[v.FindingID] = v.CommentedOut.Prob
+	}
+	if got["prose"] != 0.9 || got["tag"] != 0 {
+		t.Errorf("commented-out probabilities %v, want the prose answered and the tag never asked", got)
 	}
 }

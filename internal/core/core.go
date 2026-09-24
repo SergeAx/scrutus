@@ -90,8 +90,11 @@ type Verdict struct {
 	Accuracy   Axis
 	Usefulness Axis
 	Overreach  Noul
-	Usage      Usage
-	Model      string
+	// CommentedOut is the probability that the comment is disabled code; an
+	// annotation is never asked, so it stays zero there.
+	CommentedOut Noul
+	Usage        Usage
+	Model        string
 }
 
 type Action string

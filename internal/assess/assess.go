@@ -26,10 +26,11 @@ type Axis struct {
 }
 
 type Rubric struct {
-	Version    int  `toml:"rubric_version"`
-	Accuracy   Axis `toml:"accuracy"`
-	Usefulness Axis `toml:"usefulness"`
-	Overreach  Axis `toml:"overreach"`
+	Version      int  `toml:"rubric_version"`
+	Accuracy     Axis `toml:"accuracy"`
+	Usefulness   Axis `toml:"usefulness"`
+	Overreach    Axis `toml:"overreach"`
+	CommentedOut Axis `toml:"commented_out"`
 }
 
 // LoadRubric reads the embedded default or a file, which may reword anything
@@ -54,8 +55,10 @@ func LoadRubric(path string) (Rubric, error) {
 				describe(path), name, len(axis.Criteria), Levels)
 		}
 	}
-	if strings.TrimSpace(r.Overreach.Instructions) == "" {
-		return Rubric{}, fmt.Errorf("rubric %s: overreach.instructions is empty", describe(path))
+	for name, axis := range map[string]Axis{"overreach": r.Overreach, "commented_out": r.CommentedOut} {
+		if strings.TrimSpace(axis.Instructions) == "" {
+			return Rubric{}, fmt.Errorf("rubric %s: %s.instructions is empty", describe(path), name)
+		}
 	}
 	return r, nil
 }

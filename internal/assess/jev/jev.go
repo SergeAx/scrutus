@@ -132,8 +132,8 @@ func (r request) growth(rubric assess.Rubric, f core.Finding) int {
 	return size
 }
 
-// question is one of the three a finding is asked; criteria is nil for the
-// overreach probability, which has no levels.
+// question is one of those a finding is asked; criteria is nil for the
+// probabilities, which have no levels.
 type question struct {
 	name         string
 	instructions string
@@ -145,12 +145,20 @@ func questionsFor(rubric assess.Rubric, f core.Finding) []question {
 	if f.Slot != "" {
 		suffix = "." + f.Slot
 	}
-	return []question{
+	questions := []question{
 		{"accuracy" + suffix, instructions(rubric.Accuracy.Instructions, f), rubric.Accuracy.Criteria},
 		{"usefulness" + suffix, instructions(rubric.Usefulness.Instructions, f), rubric.Usefulness.Criteria},
 		{"overreach" + suffix, instructions(rubric.Overreach.Instructions, f), nil},
 	}
+	if asksCommentedOut(f) {
+		questions = append(questions, question{"commented_out" + suffix, instructions(rubric.CommentedOut.Instructions, f), nil})
+	}
+	return questions
 }
+
+// asksCommentedOut skips annotation tags, which are syntax for tools and read
+// as code often enough to be mistaken for it.
+func asksCommentedOut(f core.Finding) bool { return f.Kind != core.KindAnnotation }
 
 // group collects findings that share a state, so a docblock and its annotation
 // lines cost one state instead of one each.
@@ -216,13 +224,22 @@ func (a *Assessor) assessBlock(ctx context.Context, findings []core.Finding) ([]
 		if !ok || overreach == nil {
 			return nil, missing(f, "overreach"+suffix, resp.RequestID)
 		}
+		var commentedOut core.Noul
+		if asksCommentedOut(f) {
+			answer, ok := nouls["commented_out"+suffix]
+			if !ok || answer == nil {
+				return nil, missing(f, "commented_out"+suffix, resp.RequestID)
+			}
+			commentedOut.Prob = answer.Noul
+		}
 		out = append(out, core.Verdict{
-			FindingID:  f.ID,
-			Accuracy:   toAxis(accuracy, assess.Levels),
-			Usefulness: toAxis(usefulness, assess.Levels),
-			Overreach:  core.Noul{Prob: overreach.Noul},
-			Usage:      perFinding,
-			Model:      resp.Model,
+			FindingID:    f.ID,
+			Accuracy:     toAxis(accuracy, assess.Levels),
+			Usefulness:   toAxis(usefulness, assess.Levels),
+			Overreach:    core.Noul{Prob: overreach.Noul},
+			CommentedOut: commentedOut,
+			Usage:        perFinding,
+			Model:        resp.Model,
 		})
 	}
 

@@ -12,7 +12,7 @@ import (
 	"github.com/SergeAx/scrutus/internal/core"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Reporter interface {
 	Report(w io.Writer, results []core.Result, run core.RunInfo) error

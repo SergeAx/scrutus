@@ -163,7 +163,7 @@ reasoning behind each rule.
 ## Cost and caching
 
 Jev charges $0.042 per million input tokens and nothing for output. A comment
-costs about 630 input tokens, so 100,000 comments cost about $2.65. Each run
+costs about 590 input tokens, so 100,000 comments cost about $2.50. Each run
 stops at `--budget` cents, 50 by default. Verdicts are cached, keyed on the
 comment, its code, the rubric version and the model, so unchanged comments are
 not scored again.

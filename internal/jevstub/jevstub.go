@@ -15,11 +15,12 @@ import (
 
 type Recorded struct {
 	// Match is a substring of the comment the state carries.
-	Match      string  `json:"match"`
-	Accuracy   float64 `json:"accuracy"`
-	Usefulness float64 `json:"usefulness"`
-	Overreach  float64 `json:"overreach"`
-	Confidence float64 `json:"confidence"`
+	Match        string  `json:"match"`
+	Accuracy     float64 `json:"accuracy"`
+	Usefulness   float64 `json:"usefulness"`
+	Overreach    float64 `json:"overreach"`
+	CommentedOut float64 `json:"commented_out"`
+	Confidence   float64 `json:"confidence"`
 }
 
 type Fixtures struct {
@@ -79,6 +80,8 @@ func New(fixtures Fixtures) *Server {
 				answers[name] = score(recorded.Usefulness, recorded.Confidence, usefulnessLegend)
 			case "overreach":
 				answers[name] = map[string]any{"type": "noul", "noul": recorded.Overreach}
+			case "commented_out":
+				answers[name] = map[string]any{"type": "noul", "noul": recorded.CommentedOut}
 			}
 		}
 

@@ -227,7 +227,7 @@ func TestJSONReportIsSchemaShaped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.SchemaVersion != 1 || parsed.Tool.Name != "scrutus" || parsed.Tool.RubricVersion != rubric.Version {
+	if parsed.SchemaVersion != 2 || parsed.Tool.Name != "scrutus" || parsed.Tool.RubricVersion != rubric.Version {
 		t.Errorf("tool block: %+v", parsed.Tool)
 	}
 	if parsed.Backend.Model != "jev-1.13.0" {

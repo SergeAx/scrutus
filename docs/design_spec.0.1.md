@@ -53,11 +53,12 @@ type Finding struct {
 }
 
 type Verdict struct {
-    FindingID  string
-    Accuracy   Axis   // Score float64, Pct int, Label string, Confidence float64
-    Usefulness Axis
-    Overreach  Noul   // Prob float64: comment describes code outside the paired span
-    Usage      Usage  // InputTokens, CostUSD
+    FindingID    string
+    Accuracy     Axis  // Score float64, Pct int, Label string, Confidence float64
+    Usefulness   Axis
+    Overreach    Noul  // Prob float64: comment describes code outside the paired span
+    CommentedOut Noul  // Prob float64: comment is disabled code, not prose
+    Usage        Usage // InputTokens, CostUSD
 }
 
 type Result struct {
@@ -250,7 +251,7 @@ Only `KEY=value` lines are read, nothing is ever written back, and the key reach
 
 ## 5. Assessment (Jev)
 
-One `SystemOne` call per comment block, carrying two Score questions and one Noul question for each finding in it. A standalone comment is a block of one; a docblock is its free text plus one finding per annotation tag (§4.3), and all of them share a single `state`, which is where nearly all the input tokens sit. Jev returns a fractional level per question plus a confidence; the tool rescales to 0–100 and takes the nearest level's text as the label.
+One `SystemOne` call per comment block, carrying two Score questions and two Noul questions for each finding in it, or one Noul for an annotation tag. A standalone comment is a block of one; a docblock is its free text plus one finding per annotation tag (§4.3), and all of them share a single `state`, which is where nearly all the input tokens sit. Jev returns a fractional level per question plus a confidence; the tool rescales to 0–100 and takes the nearest level's text as the label.
 
 ### 5.1 Request
 
@@ -264,9 +265,10 @@ client, err := typesafe.New(
 )
 
 resp, err := client.SystemOne(ctx, state, typesafe.Questions{
-    "accuracy":   typesafe.Score{Instructions: r.Accuracy.Instructions, Criteria: r.Accuracy.Criteria},
-    "usefulness": typesafe.Score{Instructions: r.Usefulness.Instructions, Criteria: r.Usefulness.Criteria},
-    "overreach":  typesafe.Noul{Instructions: r.Overreach.Instructions},
+    "accuracy":      typesafe.Score{Instructions: r.Accuracy.Instructions, Criteria: r.Accuracy.Criteria},
+    "usefulness":    typesafe.Score{Instructions: r.Usefulness.Instructions, Criteria: r.Usefulness.Criteria},
+    "overreach":     typesafe.Noul{Instructions: r.Overreach.Instructions},
+    "commented_out": typesafe.Noul{Instructions: r.CommentedOut.Instructions},
 })
 ```
 
@@ -275,7 +277,7 @@ One `*typesafe.Client` serves the whole worker pool: it is immutable after `New`
 `r` is the rubric, read from `internal/assess/rubric_default.toml` or from the file named by `rubric`. A custom rubric may reword anything but must keep exactly four levels per axis, so thresholds stay comparable.
 
 ```toml
-rubric_version = 2
+rubric_version = 3
 
 [accuracy]
 instructions = """
@@ -301,6 +303,13 @@ criteria = [
 
 [overreach]
 instructions = "The COMMENT describes behavior or purpose that lies outside the marked CODE, for example the whole function or a later section."
+
+[commented_out]
+instructions = """
+The COMMENT is source code switched off by commenting it out, rather than text
+written for a reader. Prose that quotes code, names identifiers or shows a
+usage example is not.
+"""
 ```
 
 `state` is a plain string, assembled per block:
@@ -321,7 +330,9 @@ func normalize(in string) string {
 
 Here Accuracy should land around "Materially misleading" (the lowercase claim is true of the function but not of the marked code) and `overreach` should come back near 1, which downgrades the finding to info rather than flagging it as wrong (§6).
 
-Levels are written as situations, not degrees, which is TypeSafe's own guidance for calibrated Score answers. The Noul question returns a single calibrated probability and is used only as a guard in classification, never as a score shown to the user.
+Levels are written as situations, not degrees, which is TypeSafe's own guidance for calibrated Score answers. Each Noul question returns a single calibrated probability and is used only as a guard in classification, never as a score shown to the user.
+
+`commented_out` exists because disabled code has no prose to grade: asked whether `// $record->addKeyValue('currency_field', $currency);` describes the code below it, the model answers "fundamentally wrong", and the comment is reported as an error. An annotation tag is never asked, since tags are syntax for tools and read as code often enough to be mistaken for it; the question costs about 50 tokens a finding.
 
 In a grouped request the state shows the whole docblock with each tag's lines between `>>> A1` and `<<< A1` marker lines (`A2`, … for the next ones), and the `typesafe.Questions` keys carry the same slot (`accuracy.a1`, `usefulness.a1`, `overreach.a1`), each set of instructions naming its markers; the docblock's own questions answer about the text outside them. A block whose questions would take a request past 32 000 estimated tokens, half of Jev's input limit, is split across several requests that each repeat the docblock. Verdicts are still cached per finding ID, so a block whose findings are partly cached is requested for the missing slots only.
 
@@ -338,10 +349,11 @@ func toAxis(a *typesafe.ScoreAnswer, levels int) Axis {
 
 scores, nouls := resp.Scores(), resp.Nouls()
 v := Verdict{
-    Accuracy:   toAxis(scores["accuracy"], levels),
-    Usefulness: toAxis(scores["usefulness"], levels),
-    Overreach:  Noul{Prob: nouls["overreach"].Noul},
-    Usage:      Usage{InputTokens: resp.Usage.InputTokens},
+    Accuracy:     toAxis(scores["accuracy"], levels),
+    Usefulness:   toAxis(scores["usefulness"], levels),
+    Overreach:    Noul{Prob: nouls["overreach"].Noul},
+    CommentedOut: Noul{Prob: nouls["commented_out"].Noul},
+    Usage:        Usage{InputTokens: resp.Usage.InputTokens},
 }
 ```
 
@@ -356,7 +368,7 @@ A question that comes back missing — a nil entry in either map — is a protoc
 - `jev.timeout` is the SDK's per-attempt timeout, while the run's context bounds every attempt and all backoff together, since the SDK counts backoff against the context.
 - `--soft-fail` swallows transport failures, matched with `errors.Is(err, typesafe.ErrConnection)`, which `ErrTimeout` also satisfies. A 401 or a 400 is not a transport failure and still exits 2 (§12.2).
 - Budget: cost is estimated up front from the assembled requests — a token per 3.6 bytes of state and question text, plus 250 for each request, which tracked Jev's bills to within 2% a request over a 5 800-request run — and if the estimate exceeds `--budget` the run refuses before the first request (exit 3). Actual spend is also tracked and the run stops early if it crosses the budget.
-- Expected cost: measured at ~630 input tokens for a block of one on Go sources (paragraph plus context), and an estimated ~120 for each additional annotation slot in the same block, since the state is sent once. At ~630 a Go-only 100k-comment repo costs about $2.65. Taking a PHP/TS mix of 40% docblocks carrying three tags each gives ~545 tokens per comment block on average: a 20-comment commit ≈ 0.046¢, a 100k-comment repo ≈ $2.28. A Go-only repo has no annotation tags and stays at ~400, so ≈ $1.68. Both sit under the §1 goal of $5, and the default `--budget` of 50¢ covers roughly 20k comments before it trips.
+- Expected cost: a run over a 1 300-file Laravel repo billed 5.24 M input tokens for 8 909 findings in 5 250 requests: about 590 a finding and 22¢ in all, since a docblock's tags share one state. At that rate a 20-comment commit costs about 0.05¢ and a 100k-comment repo about $2.50, under the §1 goal of $5, and the default `--budget` of 50¢ covers roughly 20k comments before it trips.
 
 ### 5.4 Prompt hygiene
 
@@ -416,7 +428,7 @@ Every reporter consumes the same `[]Result` and `RunInfo`; the JSON schema is th
 | `--format` | Consumer | Notes |
 | --- | --- | --- |
 | `text` | Humans in a terminal | Per-finding block: location, two bars with pct and label, the comment+code snippet; totals and cost at the end. Colors via `fatih/color`, disabled when not a TTY or `NO_COLOR` is set |
-| `json` | Scripts, dashboards | Canonical schema below, `schema_version: 1` |
+| `json` | Scripts, dashboards | Canonical schema below, `schema_version: 2` |
 | `sarif` | GitHub code scanning, VS Code SARIF viewer | SARIF 2.1.0; rule ids from §6; Delete actions carry a `fixes[]` entry removing the span |
 | `github` | GitHub Actions log | `::error file=…,line=…,title=…::…` workflow commands |
 | `rdjson` | reviewdog → PR review comments | Includes `suggestions` for deletions so reviewers can apply them from the PR |
@@ -426,8 +438,8 @@ Every reporter consumes the same `[]Result` and `RunInfo`; the JSON schema is th
 
 ```json
 {
-  "schema_version": 1,
-  "tool": {"name": "scrutus", "version": "0.1.0", "rubric_version": 2},
+  "schema_version": 2,
+  "tool": {"name": "scrutus", "version": "0.1.0", "rubric_version": 3},
   "backend": {"name": "jev", "model": "jev-1.13.0"},
   "run": {"mode": "check", "scope": "changed", "base": "origin/main",
           "files": 12, "comments": 87,
@@ -444,6 +456,7 @@ Every reporter consumes the same `[]Result` and `RunInfo`; the JSON schema is th
       "accuracy":   {"pct": 1,  "label": "Fundamentally wrong",   "confidence": 0.97},
       "usefulness": {"pct": 11, "label": "No information beyond the code", "confidence": 0.91},
       "overreach":  {"prob": 0.04},
+      "commented_out": {"prob": 0.21},
       "comment": "// Multiply the value by three.",
       "code": "return value / 3"
     }
@@ -452,7 +465,7 @@ Every reporter consumes the same `[]Result` and `RunInfo`; the JSON schema is th
 }
 ```
 
-`cost_usd` is always present (0 when fully cached) so downstream tooling never branches on backend.
+`cost_usd` is always present (0 when fully cached) so downstream tooling never branches on backend. `commented_out` is 0 on an annotation, which is never asked.
 
 ### 7.3 Exit codes
 

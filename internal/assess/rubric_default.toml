@@ -1,4 +1,4 @@
-rubric_version = 2
+rubric_version = 3
 
 [accuracy]
 instructions = """
@@ -24,3 +24,10 @@ criteria = [
 
 [overreach]
 instructions = "The COMMENT describes behavior or purpose that lies outside the marked CODE, for example the whole function or a later section."
+
+[commented_out]
+instructions = """
+The COMMENT is source code switched off by commenting it out, rather than text
+written for a reader. Prose that quotes code, names identifiers or shows a
+usage example is not.
+"""
