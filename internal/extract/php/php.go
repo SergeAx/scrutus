@@ -41,13 +41,25 @@ type comment struct {
 
 func (c comment) isLine() bool { return !strings.HasPrefix(c.text, "/*") }
 
+type item struct {
+	span
+	doc bool
+}
+
+// container holds the items the paragraph rule walks: statements in a block,
+// members of a class, entries of an array, arguments, parameters.
+type container struct {
+	span
+	items  []item
+	parent int // index of the nearest container around it, or -1
+}
+
 type walker struct {
 	src        []byte
 	lineStarts []int
 	comments   []comment
 	stripped   *extract.Stripped
-	statements []span // every statement in a body, for the paragraph rule
-	endings    []span // statements by the line they end on, latest start first
+	containers []container
 	decls      []span // what a docblock can document
 	outer      []int  // index of the declaration around each one, or -1
 	seen       map[*token.Token]bool
@@ -72,15 +84,18 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 			w.lineStarts = append(w.lineStarts, i+1)
 		}
 	}
-	w.walk(reflect.ValueOf(root), false)
+	w.walk(reflect.ValueOf(root))
 	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
-	slices.SortFunc(w.statements, byStart)
 	slices.SortFunc(w.decls, byStart)
-	w.nest()
-	w.endings = slices.Clone(w.statements)
-	slices.SortFunc(w.endings, func(a, b span) int {
-		return cmp.Or(cmp.Compare(w.line(a.end-1), w.line(b.end-1)), cmp.Compare(b.start, a.start))
+	w.outer = nest(len(w.decls), func(i int) span { return w.decls[i] })
+	// Of two containers starting together the outer one sorts first, so it
+	// is the one nest finds open.
+	slices.SortFunc(w.containers, func(a, b container) int {
+		return cmp.Or(byStart(a.span, b.span), cmp.Compare(b.end, a.end))
 	})
+	for i, parent := range nest(len(w.containers), func(i int) span { return w.containers[i].span }) {
+		w.containers[i].parent = parent
+	}
 	var cuts []core.Span
 	for _, c := range w.comments {
 		cuts = append(cuts, core.Span{Start: c.start, End: c.end})
@@ -94,24 +109,27 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 	return findings, nil
 }
 
-func (w *walker) nest() {
-	var open []int
-	for i, decl := range w.decls {
-		for len(open) > 0 && w.decls[open[len(open)-1]].end < decl.end {
+// nest finds the span around each of n spans sorted by start, as an index or
+// -1.
+func nest(n int, at func(int) span) []int {
+	var open, outer []int
+	for i := range n {
+		for len(open) > 0 && at(open[len(open)-1]).end < at(i).end {
 			open = open[:len(open)-1]
 		}
-		outer := -1
+		parent := -1
 		if len(open) > 0 {
-			outer = open[len(open)-1]
+			parent = open[len(open)-1]
 		}
-		w.outer = append(w.outer, outer)
+		outer = append(outer, parent)
 		open = append(open, i)
 	}
+	return outer
 }
 
 // walk reaches every node and token by reflection: the AST has no generic
 // child accessor, and comments live in the tokens' free-floating lists.
-func (w *walker) walk(v reflect.Value, inBody bool) {
+func (w *walker) walk(v reflect.Value) {
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
 		if v.IsNil() {
@@ -124,10 +142,10 @@ func (w *walker) walk(v reflect.Value, inBody bool) {
 		if node, ok := v.Interface().(ast.Vertex); ok {
 			w.record(node)
 		}
-		w.walk(v.Elem(), inBody)
+		w.walk(v.Elem())
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
-			w.walk(v.Index(i), inBody)
+			w.walk(v.Index(i))
 		}
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
@@ -135,12 +153,108 @@ func (w *walker) walk(v reflect.Value, inBody bool) {
 			if !field.IsExported() {
 				continue
 			}
-			if field.Name == "Stmts" {
-				w.recordStatements(v.Field(i))
+			if brackets, ok := itemLists[field.Name]; ok {
+				w.addContainer(v, field.Name, brackets)
 			}
-			w.walk(v.Field(i), inBody)
+			w.walk(v.Field(i))
 		}
 	}
+}
+
+var itemLists = map[string][2]string{
+	"Stmts":  {"OpenCurlyBracketTkn", "CloseCurlyBracketTkn"},
+	"Cases":  {"OpenCurlyBracketTkn", "CloseCurlyBracketTkn"},
+	"Arms":   {"OpenCurlyBracketTkn", "CloseCurlyBracketTkn"},
+	"Items":  {"OpenBracketTkn", "CloseBracketTkn"},
+	"Args":   {"OpenParenthesisTkn", "CloseParenthesisTkn"},
+	"Params": {"OpenParenthesisTkn", "CloseParenthesisTkn"},
+}
+
+func (w *walker) addContainer(node reflect.Value, list string, brackets [2]string) {
+	c := container{span: w.bracketed(node, brackets)}
+	if c.end <= c.start {
+		return
+	}
+	items := node.FieldByName(list)
+	for i := 0; i < items.Len(); i++ {
+		vertex, ok := items.Index(i).Interface().(ast.Vertex)
+		if !ok || reflect.ValueOf(vertex).IsNil() {
+			continue
+		}
+		if s, ok := spanOf(vertex); ok {
+			c.items = append(c.items, item{span: s, doc: documentable[reflect.TypeOf(vertex).Elem().Name()]})
+		}
+	}
+	w.containers = append(w.containers, c)
+}
+
+// bracketed is the span of a node's item list: its brackets when it has them,
+// otherwise the node, as for a `case` or the file itself.
+func (w *walker) bracketed(node reflect.Value, brackets [2]string) span {
+	if node.Type() == reflect.TypeFor[ast.Root]() {
+		return span{start: 0, end: len(w.src), line: 1}
+	}
+	open, closing := tokenField(node, brackets[0]), tokenField(node, brackets[1])
+	if open != nil && closing != nil && open.Position != nil && closing.Position != nil {
+		return span{start: open.Position.StartPos, end: closing.Position.EndPos, line: open.Position.StartLine}
+	}
+	if vertex, ok := node.Addr().Interface().(ast.Vertex); ok {
+		if s, ok := spanOf(vertex); ok {
+			return s
+		}
+	}
+	return span{}
+}
+
+// spanOf works around the parser ending a `case` that has no statements at -1:
+// such a node ends where its last token does.
+func spanOf(node ast.Vertex) (span, bool) {
+	pos := node.GetPosition()
+	if pos == nil {
+		return span{}, false
+	}
+	s := span{start: pos.StartPos, end: pos.EndPos, line: pos.StartLine}
+	if s.end < s.start {
+		s.end = lastToken(reflect.ValueOf(node))
+	}
+	return s, s.end > s.start
+}
+
+func lastToken(v reflect.Value) int {
+	end := -1
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return end
+		}
+		if tok, ok := v.Interface().(*token.Token); ok {
+			if tok.Position != nil {
+				end = tok.Position.EndPos
+			}
+			return end
+		}
+		return lastToken(v.Elem())
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			end = max(end, lastToken(v.Index(i)))
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if v.Type().Field(i).IsExported() {
+				end = max(end, lastToken(v.Field(i)))
+			}
+		}
+	}
+	return end
+}
+
+func tokenField(node reflect.Value, name string) *token.Token {
+	field := node.FieldByName(name)
+	if !field.IsValid() {
+		return nil
+	}
+	tok, _ := field.Interface().(*token.Token)
+	return tok
 }
 
 func (w *walker) collectTokens(tok *token.Token) {
@@ -158,9 +272,7 @@ func (w *walker) collectTokens(tok *token.Token) {
 		start := free.Position.StartPos
 		text := strings.TrimRight(string(free.Value), " \t\r\n")
 		w.comments = append(w.comments, comment{
-			start:   start,
-			end:     start + len(text),
-			line:    free.Position.StartLine,
+			span:    span{start: start, end: start + len(text), line: free.Position.StartLine},
 			text:    text,
 			isDoc:   free.ID == token.T_DOC_COMMENT,
 			column:  w.column(start),
@@ -186,21 +298,6 @@ func (w *walker) record(node ast.Vertex) {
 	}
 }
 
-func (w *walker) recordStatements(stmts reflect.Value) {
-	if stmts.Kind() != reflect.Slice {
-		return
-	}
-	for i := 0; i < stmts.Len(); i++ {
-		node, ok := stmts.Index(i).Interface().(ast.Vertex)
-		if !ok || node == nil {
-			continue
-		}
-		if pos := node.GetPosition(); pos != nil {
-			w.statements = append(w.statements, span{start: pos.StartPos, end: pos.EndPos, line: pos.StartLine})
-		}
-	}
-}
-
 // groups merges consecutive line comments alone on their lines at one
 // indentation, as the tree-sitter walker does, so a comment wrapped over
 // several lines is judged whole.
@@ -223,8 +320,8 @@ func (w *walker) groups() []comment {
 
 // pair applies the rules of §4.3.
 func (w *walker) pair(file string, c comment) []core.Finding {
-	kind, code, protected := w.code(c)
-	if code.end <= code.start {
+	kind, code, ok := w.code(c)
+	if !ok {
 		return nil
 	}
 	codeText, codeSpan := w.text(code)
@@ -237,7 +334,7 @@ func (w *walker) pair(file string, c comment) []core.Finding {
 		Context:   w.context(codeSpan),
 		Line:      c.line,
 		Column:    c.column,
-		Protected: protected,
+		Protected: kind == core.KindDoc,
 	}
 
 	if !c.isDoc {
@@ -248,101 +345,119 @@ func (w *walker) pair(file string, c comment) []core.Finding {
 }
 
 func (w *walker) code(c comment) (core.Kind, span, bool) {
+	box := w.innermost(c.span)
 	// A docblock documents whatever comes next. Inside a method body that is a
 	// statement, not the next declaration: `/** @var Foo $bar */` over a local
 	// is the idiom static analysers rely on.
 	if c.isDoc {
-		decl, hasDecl := w.nextDecl(c.end)
-		paragraph, hasParagraph := w.paragraph(c)
-		if hasDecl && (!hasParagraph || decl.start <= paragraph.start) {
-			return core.KindDoc, decl, true
+		if next, ok := box.after(c.end); ok && next.doc {
+			return core.KindDoc, next.span, true
 		}
-		if hasParagraph {
-			return core.KindInline, paragraph, false
+		if run, ok := w.paragraph(box, c); ok {
+			return core.KindInline, run, true
 		}
 	}
-	if stmt, ok := w.sameLineStatement(c); ok {
-		return core.KindTrailing, stmt, false
+	if !c.ownLine {
+		if it, ok := w.sameLine(box, c); ok {
+			return core.KindTrailing, it, true
+		}
 	}
-	if paragraph, ok := w.paragraph(c); ok {
-		return core.KindInline, paragraph, false
+	// A comment inside an expression, such as between chained calls, belongs
+	// to the statement around it rather than to the next one.
+	if it, ok := box.around(c.span); ok {
+		return inside(c), it, true
 	}
-	if decl, ok := w.nextDecl(c.end); ok {
-		return core.KindInline, decl, false
+	if run, ok := w.paragraph(box, c); ok {
+		return core.KindInline, run, true
 	}
-	if stmt, ok := w.precedingStatement(c); ok {
-		return core.KindTrailing, stmt, false
+	if it, ok := box.before(c.start); ok {
+		return core.KindTrailing, it, true
 	}
-	return core.KindInline, span{}, false
+	// A comment alone in an empty body, such as a closure's, is graded against
+	// what holds the body rather than skipped.
+	for i := box.parent; i >= 0; i = w.containers[i].parent {
+		if it, ok := w.containers[i].around(c.span); ok {
+			return inside(c), it, true
+		}
+	}
+	return "", span{}, false
 }
 
-// seek is the index of the first span starting at or after offset.
-func seek(spans []span, offset int) int {
-	i, _ := slices.BinarySearchFunc(spans, offset, func(s span, offset int) int { return cmp.Compare(s.start, offset) })
+func inside(c comment) core.Kind {
+	if c.ownLine {
+		return core.KindInline
+	}
+	return core.KindTrailing
+}
+
+// innermost climbs from the last container to start before s: any container
+// holding s is among its ancestors. Of two sharing a span, the outer one wins.
+func (w *walker) innermost(s span) container {
+	i, _ := slices.BinarySearchFunc(w.containers, s.start+1, func(c container, start int) int { return cmp.Compare(c.start, start) })
+	for i--; i >= 0; i = w.containers[i].parent {
+		c := w.containers[i]
+		if s.end > c.end {
+			continue
+		}
+		for c.parent >= 0 && w.containers[c.parent].start == c.start && w.containers[c.parent].end == c.end {
+			c = w.containers[c.parent]
+		}
+		return c
+	}
+	return container{parent: -1}
+}
+
+func (c container) from(offset int) int {
+	i, _ := slices.BinarySearchFunc(c.items, offset, func(it item, start int) int { return cmp.Compare(it.start, start) })
 	return i
 }
 
-func (w *walker) nextDecl(after int) (span, bool) {
-	i := seek(w.decls, after)
-	if i == len(w.decls) {
+func (c container) after(offset int) (item, bool) {
+	i := c.from(offset)
+	if i == len(c.items) {
+		return item{}, false
+	}
+	return c.items[i], true
+}
+
+func (c container) around(s span) (span, bool) {
+	i := c.from(s.start + 1)
+	if i == 0 || c.items[i-1].end < s.end {
 		return span{}, false
 	}
-	return w.decls[i], true
+	return c.items[i-1].span, true
 }
 
-func (w *walker) sameLineStatement(c comment) (span, bool) {
-	i, _ := slices.BinarySearchFunc(w.endings, c.line, func(s span, line int) int { return cmp.Compare(w.line(s.end-1), line) })
-	for _, stmt := range w.endings[i:] {
-		if w.line(stmt.end-1) != c.line {
-			break
-		}
-		if stmt.end <= c.start {
-			return stmt, true
-		}
+func (c container) before(offset int) (span, bool) {
+	i, _ := slices.BinarySearchFunc(c.items, offset+1, func(it item, end int) int { return cmp.Compare(it.end, end) })
+	if i == 0 {
+		return span{}, false
 	}
-	return span{}, false
+	return c.items[i-1].span, true
 }
 
-// paragraph is the run of statements a comment heads, ending at a blank line,
-// the next comment, or the end of the enclosing body.
-func (w *walker) paragraph(c comment) (span, bool) {
+func (w *walker) sameLine(box container, c comment) (span, bool) {
+	it, ok := box.before(c.start)
+	return it, ok && w.line(it.end-1) == c.line
+}
+
+// paragraph is the run of items a comment heads, ending at a blank line, the
+// next comment, or the end of its container.
+func (w *walker) paragraph(box container, c comment) (span, bool) {
 	var run []span
-	for _, stmt := range w.statements[seek(w.statements, c.end):] {
-		if len(run) == 0 {
-			if w.enclosingStatement(stmt, c) {
-				continue
+	for _, it := range box.items[box.from(c.end):] {
+		if len(run) > 0 {
+			previous := run[len(run)-1]
+			if w.line(it.start)-w.line(previous.end-1) > 1 || w.commentBetween(previous.end, it.start) {
+				break
 			}
-			run = append(run, stmt)
-			continue
 		}
-		previous := run[len(run)-1]
-		if stmt.start < previous.end {
-			continue
-		}
-		if w.line(stmt.start)-w.line(previous.end-1) > 1 || w.commentBetween(previous.end, stmt.start) {
-			break
-		}
-		run = append(run, stmt)
+		run = append(run, it.span)
 	}
 	if len(run) == 0 {
 		return span{}, false
 	}
 	return span{start: run[0].start, end: run[len(run)-1].end, line: run[0].line}, true
-}
-
-// enclosingStatement skips the block a comment sits inside: its own body's
-// statements are the paragraph, not the block itself.
-func (w *walker) enclosingStatement(stmt span, c comment) bool {
-	return stmt.start <= c.start && stmt.end >= c.end
-}
-
-func (w *walker) precedingStatement(c comment) (span, bool) {
-	for i := seek(w.statements, c.start+1) - 1; i >= 0; i-- {
-		if stmt := w.statements[i]; stmt.end <= c.start {
-			return stmt, true
-		}
-	}
-	return span{}, false
 }
 
 func (w *walker) commentBetween(from, to int) bool {
@@ -379,6 +494,12 @@ func (w *walker) enclosingDecl(code core.Span) (span, bool) {
 		}
 	}
 	return span{}, false
+}
+
+// seek is the index of the first span starting at or after offset.
+func seek(spans []span, offset int) int {
+	i, _ := slices.BinarySearchFunc(spans, offset, func(s span, offset int) int { return cmp.Compare(s.start, offset) })
+	return i
 }
 
 func (w *walker) line(offset int) int {

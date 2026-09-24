@@ -269,3 +269,103 @@ func TestSpansPointAtTheComment(t *testing.T) {
 		}
 	}
 }
+
+func extractPHP(t *testing.T, body string) map[string]core.Finding {
+	t.Helper()
+
+	got, err := extract.Extract("case.php", []byte(body), []string{"php"}, extract.Options{ContextLines: 20, MaxCodeLines: 40})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	byComment := map[string]core.Finding{}
+	for _, f := range got {
+		byComment[strings.TrimSpace(f.CommentText)] = f
+	}
+	return byComment
+}
+
+type pairing struct {
+	comment string
+	kind    core.Kind
+	codeHas string
+	codeNot string
+}
+
+func checkPairings(t *testing.T, all map[string]core.Finding, cases []pairing) {
+	t.Helper()
+
+	for _, tc := range cases {
+		f, ok := all[tc.comment]
+		if !ok {
+			t.Errorf("%q was not extracted", tc.comment)
+			continue
+		}
+		if f.Kind != tc.kind {
+			t.Errorf("%q: kind %s, want %s", tc.comment, f.Kind, tc.kind)
+		}
+		if !strings.Contains(f.CodeText, tc.codeHas) {
+			t.Errorf("%q: code %q lacks %q", tc.comment, f.CodeText, tc.codeHas)
+		}
+		if tc.codeNot != "" && strings.Contains(f.CodeText, tc.codeNot) {
+			t.Errorf("%q: code %q reaches %q", tc.comment, f.CodeText, tc.codeNot)
+		}
+	}
+}
+
+func TestCommentsInsideLiteralsPairWithTheirEntries(t *testing.T) {
+	checkPairings(t, extractPHP(t, `<?php
+
+class SlotPatient
+{
+    protected $fillable = [
+        'status', // the request status
+        'cancel_reason',
+        // Columns the importer fills.
+        'imported_at',
+        'imported_by',
+    ];
+
+    protected $dates = [
+        'confirmed_at',
+    ];
+
+    public function notify(): void
+    {
+        send(
+            $this->patient,
+            // Retries before the gateway gives up.
+            3,
+        );
+        $this->touch();
+    }
+}
+`), []pairing{
+		{"// the request status", core.KindTrailing, "'status'", "$dates"},
+		{"// Columns the importer fills.", core.KindInline, "'imported_at',\n        'imported_by'", "$dates"},
+		{"// Retries before the gateway gives up.", core.KindInline, "3", "touch"},
+	})
+}
+
+func TestCommentsAtTheEndOfABlockStayInIt(t *testing.T) {
+	checkPairings(t, extractPHP(t, `<?php
+
+function move(array $codes): void
+{
+    foreach ($codes as $code) {
+        if (! $code) {
+            return;
+            // throw new InvalidArgumentException('Assistant not found');
+        }
+    }
+
+    Schema::table('users', function (Blueprint $table) {
+        // $table->dropForeign('users_role_id_foreign');
+    });
+
+    report($codes);
+}
+`), []pairing{
+		{"// throw new InvalidArgumentException('Assistant not found');", core.KindTrailing, "return;", "report"},
+		{"// $table->dropForeign('users_role_id_foreign');", core.KindInline, "function (Blueprint $table)", "report"},
+	})
+}
