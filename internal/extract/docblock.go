@@ -51,19 +51,24 @@ func splitDocblock(text string) (prose string, proseEnd int, tags []tag) {
 	lines := strings.Split(text, "\n")
 	var free []string
 	offset, proseEnd := 0, len(text)
+	continued := false
 	for i, line := range lines {
-		if tagLine.MatchString(line) {
-			trimmed := strings.TrimLeft(line, " \t*/")
+		end := offset + len(strings.TrimRight(strings.TrimSuffix(strings.TrimRight(line, " \t\r"), "*/"), " \t"))
+		switch {
+		case tagLine.MatchString(line):
 			if len(tags) == 0 {
 				proseEnd = offset
 			}
-			tags = append(tags, tag{
-				text:       strings.TrimRight(strings.TrimSuffix(strings.TrimRight(trimmed, " \t\r"), "*/"), " \t"),
-				offset:     offset + (len(line) - len(trimmed)),
-				lineOffset: i,
-			})
-		} else {
+			start := offset + len(line) - len(strings.TrimLeft(line, " \t*/"))
+			tags = append(tags, tag{text: text[start:end], offset: start, lineOffset: i})
+			continued = true
+		case continued && strings.TrimLeft(text[offset:end], " \t*/") != "":
+			// A tag's description runs on to the next tag or blank line.
+			last := &tags[len(tags)-1]
+			last.text = text[last.offset:end]
+		default:
 			free = append(free, line)
+			continued = false
 		}
 		offset += len(line) + 1
 	}
