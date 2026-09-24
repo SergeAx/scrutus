@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,41 @@ usefulness = { delete = 22 }
 	if resolved.AccuracyError != 20 || resolved.UsefulnessWarn != 20 {
 		t.Errorf("profile values lost: accuracy error %d, usefulness warning %d",
 			resolved.AccuracyError, resolved.UsefulnessWarn)
+	}
+}
+
+func TestExtendExemptPrefixesAddsToTheDefaults(t *testing.T) {
+	cfg, err := config.Load(write(t, `
+version = 1
+
+[comments]
+extend_exempt_prefixes = ["@property"]
+`))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	for _, prefix := range []string{"TODO", "@phpstan-", "@property"} {
+		if !slices.Contains(cfg.Comments.ExemptPrefixes, prefix) {
+			t.Errorf("%q is not exempt: %q", prefix, cfg.Comments.ExemptPrefixes)
+		}
+	}
+}
+
+func TestExemptPrefixesStillReplaceTheDefaults(t *testing.T) {
+	cfg, err := config.Load(write(t, `
+version = 1
+
+[comments]
+exempt_prefixes = ["TODO"]
+extend_exempt_prefixes = ["@property"]
+`))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if want := []string{"TODO", "@property"}; !slices.Equal(cfg.Comments.ExemptPrefixes, want) {
+		t.Errorf("exempt prefixes = %q, want %q", cfg.Comments.ExemptPrefixes, want)
 	}
 }
 

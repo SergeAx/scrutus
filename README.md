@@ -119,8 +119,10 @@ needs the list narrowed.
 These comments are never scored: `TODO`, `FIXME`, `HACK`, `XXX`, license
 headers, shebangs, encoding lines, tool directives such as `//go:`, `nolint`,
 `@phpstan-`, `prettier-ignore` or `# noqa`, and anything shorter than 12
-characters. To silence a single comment, put `scrutus:ignore` in it or
-`scrutus:ignore-next` on the line above. See the
+characters. Exempt more prefixes with `extend_exempt_prefixes` under
+`[comments]`; `exempt_prefixes` replaces the whole default list. To silence a
+single comment, put `scrutus:ignore` in it or `scrutus:ignore-next` on the line
+above. See the
 [config file reference](docs/design_spec.0.1.md#42-config-file) for every
 setting.
 

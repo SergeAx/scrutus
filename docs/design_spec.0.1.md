@@ -193,6 +193,7 @@ exempt_prefixes = [
   "type: ignore", "noqa", "pragma:", "pylint:", "mypy:", "ruff:",
   "pyright:", "pyre-", "fmt:", "isort:", "yapf:", "nosec",
 ]
+extend_exempt_prefixes = []   # added to exempt_prefixes, which replaces the list above
 min_chars = 12                # shorter comments are skipped; annotations exempt
 context_lines = 20            # enclosing-function context cap
 keep_exported_docs = true     # Go: exported symbols keep their doc comment; PHP: docblocks on declarations

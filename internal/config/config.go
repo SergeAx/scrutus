@@ -56,13 +56,14 @@ type Usefulness struct {
 }
 
 type Comments struct {
-	Kinds             []string `toml:"kinds"`
-	ExemptPrefixes    []string `toml:"exempt_prefixes"`
-	MinChars          int      `toml:"min_chars"`
-	ContextLines      int      `toml:"context_lines"`
-	KeepExportedDocs  *bool    `toml:"keep_exported_docs"`
-	KeepDocstrings    *bool    `toml:"keep_docstrings"`
-	DeleteAnnotations bool     `toml:"delete_annotations"`
+	Kinds                []string `toml:"kinds"`
+	ExemptPrefixes       []string `toml:"exempt_prefixes"`
+	ExtendExemptPrefixes []string `toml:"extend_exempt_prefixes"`
+	MinChars             int      `toml:"min_chars"`
+	ContextLines         int      `toml:"context_lines"`
+	KeepExportedDocs     *bool    `toml:"keep_exported_docs"`
+	KeepDocstrings       *bool    `toml:"keep_docstrings"`
+	DeleteAnnotations    bool     `toml:"delete_annotations"`
 }
 
 type CacheConfig struct {
@@ -255,6 +256,7 @@ func merge(dst *Config, src Config) {
 	if src.Comments.ExemptPrefixes != nil {
 		dst.Comments.ExemptPrefixes = src.Comments.ExemptPrefixes
 	}
+	dst.Comments.ExemptPrefixes = append(dst.Comments.ExemptPrefixes, src.Comments.ExtendExemptPrefixes...)
 	if src.Comments.MinChars != 0 {
 		dst.Comments.MinChars = src.Comments.MinChars
 	}
