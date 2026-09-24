@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -72,6 +73,54 @@ func (a *Assessor) Assess(ctx context.Context, findings []core.Finding) ([]core.
 	return all, nil
 }
 
+// Jev bills about a token per 3.6 bytes of state and question text, plus about
+// 250 a request for its own framing: fitted on the 5 800 requests of one run,
+// to within 2% a request on average.
+const (
+	bytesPerToken    = 3.6
+	tokensPerRequest = 250
+)
+
+// EstimateTokens predicts the input tokens Assess will be billed for the
+// findings, so a run can refuse before spending.
+func EstimateTokens(findings []core.Finding, rubric assess.Rubric) int {
+	tokens := 0
+	for _, block := range group(findings) {
+		asked := map[string]int{}
+		for _, f := range block {
+			for _, q := range questionsFor(rubric, f) {
+				asked[q.name] = len(q.instructions) + len(strings.Join(q.criteria, ""))
+			}
+		}
+		size := len(assess.State(block[0]))
+		for _, n := range asked {
+			size += n
+		}
+		tokens += int(float64(size)/bytesPerToken) + tokensPerRequest
+	}
+	return tokens
+}
+
+// question is one of the three a finding is asked; criteria is nil for the
+// overreach probability, which has no levels.
+type question struct {
+	name         string
+	instructions string
+	criteria     []string
+}
+
+func questionsFor(rubric assess.Rubric, f core.Finding) []question {
+	suffix := ""
+	if f.Slot != "" {
+		suffix = "." + f.Slot
+	}
+	return []question{
+		{"accuracy" + suffix, instructions(rubric.Accuracy.Instructions, f.Slot), rubric.Accuracy.Criteria},
+		{"usefulness" + suffix, instructions(rubric.Usefulness.Instructions, f.Slot), rubric.Usefulness.Criteria},
+		{"overreach" + suffix, instructions(rubric.Overreach.Instructions, f.Slot), nil},
+	}
+}
+
 // group collects findings that share a state, so a docblock and its annotation
 // lines cost one state instead of one each.
 func group(findings []core.Finding) [][]core.Finding {
@@ -97,20 +146,12 @@ func group(findings []core.Finding) [][]core.Finding {
 func (a *Assessor) assessBlock(ctx context.Context, findings []core.Finding) ([]core.Verdict, error) {
 	questions := typesafe.Questions{}
 	for _, f := range findings {
-		suffix := ""
-		if f.Slot != "" {
-			suffix = "." + f.Slot
-		}
-		questions["accuracy"+suffix] = typesafe.Score{
-			Instructions: a.instructions(a.rubric.Accuracy.Instructions, f.Slot),
-			Criteria:     contents(a.rubric.Accuracy.Criteria),
-		}
-		questions["usefulness"+suffix] = typesafe.Score{
-			Instructions: a.instructions(a.rubric.Usefulness.Instructions, f.Slot),
-			Criteria:     contents(a.rubric.Usefulness.Criteria),
-		}
-		questions["overreach"+suffix] = typesafe.Noul{
-			Instructions: a.instructions(a.rubric.Overreach.Instructions, f.Slot),
+		for _, q := range questionsFor(a.rubric, f) {
+			if q.criteria == nil {
+				questions[q.name] = typesafe.Noul{Instructions: q.instructions}
+			} else {
+				questions[q.name] = typesafe.Score{Instructions: q.instructions, Criteria: contents(q.criteria)}
+			}
 		}
 	}
 
@@ -162,7 +203,7 @@ func (a *Assessor) assessBlock(ctx context.Context, findings []core.Finding) ([]
 
 // instructions names the marked slot for an annotation question, so one
 // request can ask about several marked lines in the same state.
-func (a *Assessor) instructions(base, slot string) string {
+func instructions(base, slot string) string {
 	if slot == "" {
 		return base
 	}

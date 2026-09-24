@@ -184,7 +184,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 
 	fresh := map[string]bool{}
 	if len(pending) > 0 {
-		if err := withinBudget(pending, opts.BudgetCents); err != nil {
+		if err := withinBudget(pending, rubric, opts.BudgetCents); err != nil {
 			return Report{}, err
 		}
 		assessed, err := assessor.Assess(ctx, pending)
@@ -424,17 +424,12 @@ func newAssessor(cfg config.Resolved, rubric assess.Rubric, apiKey string, opts 
 	return jev.New(client, rubric, opts.Concurrency, opts.BudgetCents/100), nil
 }
 
-// withinBudget refuses before the first request, estimating from the states
-// the run has already assembled.
-func withinBudget(pending []core.Finding, budgetCents float64) error {
+// withinBudget refuses before the first request.
+func withinBudget(pending []core.Finding, rubric assess.Rubric, budgetCents float64) error {
 	if budgetCents <= 0 {
 		return nil
 	}
-	tokens := 0
-	for _, f := range pending {
-		tokens += len(assess.State(f)) / 4
-	}
-	estimate := float64(tokens) * jev.USDPerInputToken * 100
+	estimate := float64(jev.EstimateTokens(pending, rubric)) * jev.USDPerInputToken * 100
 	if estimate > budgetCents {
 		return fmt.Errorf("%w: estimated %.2f¢ for %d findings, budget %.2f¢",
 			ErrBudget, estimate, len(pending), budgetCents)
