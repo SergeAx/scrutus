@@ -118,7 +118,7 @@ needs the list narrowed.
 
 These comments are never scored: `TODO`, `FIXME`, `HACK`, `XXX`, license
 headers, shebangs, encoding lines, tool directives such as `//go:`, `nolint`,
-`@phpstan-`, `prettier-ignore` or `# noqa`, and anything shorter than 12
+`@phpstan-`, `{@inheritDoc}`, `prettier-ignore` or `# noqa`, and anything shorter than 12
 characters. Exempt more prefixes with `extend_exempt_prefixes` under
 `[comments]`; `exempt_prefixes` replaces the whole default list. To silence a
 single comment, put `scrutus:ignore` in it or `scrutus:ignore-next` on the line

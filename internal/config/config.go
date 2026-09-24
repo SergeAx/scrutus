@@ -136,7 +136,7 @@ func Defaults() Config {
 				"Copyright", "SPDX-License-Identifier", "@license", "@preserve", "!",
 				"-*-", "vim:", "coding:", "coding=",
 				"nolint", "go:",
-				"phpcs:", "@phpstan-", "@psalm-",
+				"phpcs:", "@phpstan-", "@psalm-", "{@inheritDoc}", "@inheritDoc",
 				"eslint-", "@ts-", "prettier-ignore", "biome-ignore", "oxlint-", "tslint:",
 				"jshint", "deno-", "istanbul ", "c8 ", "webpack", "sourceMappingURL",
 				"sourceURL", "@jsx", "@flow", "@jest-", "@vitest-",

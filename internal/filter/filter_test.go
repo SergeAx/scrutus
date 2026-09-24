@@ -25,6 +25,8 @@ func TestDefaultsExemptDirectivesButNotProse(t *testing.T) {
 		{`/* webpackChunkName: "vendors" */`, true},
 		{"# fmt: off until the table ends", true},
 		{"# pyright: ignore[reportGeneralTypeIssues]", true},
+		{"/**\n     * {@inheritDoc}\n     */", true},
+		{"@inheritdoc as the Handler contract says", true},
 		{"// Retry once: the gateway drops the first call after idling.", false},
 		{"# Keep the order: callers depend on insertion order.", false},
 	}
