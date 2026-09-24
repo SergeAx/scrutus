@@ -20,8 +20,13 @@ import (
 
 func stubAssessor(t *testing.T) (assess.Assessor, *jevstub.Server) {
 	t.Helper()
+	return stubAssessorFrom(t, "payments.json")
+}
 
-	fixtures, err := jevstub.Load(filepath.Join("..", "..", "testdata", "jev", "payments.json"))
+func stubAssessorFrom(t *testing.T, fixture string) (assess.Assessor, *jevstub.Server) {
+	t.Helper()
+
+	fixtures, err := jevstub.Load(filepath.Join("..", "..", "testdata", "jev", fixture))
 	if err != nil {
 		t.Fatalf("fixtures: %v", err)
 	}
@@ -206,7 +211,11 @@ func TestJSONReportIsSchemaShaped(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
 		t.Fatalf("json: %v\n%s", err, output)
 	}
-	if parsed.SchemaVersion != 1 || parsed.Tool.Name != "scrutus" || parsed.Tool.RubricVersion != 1 {
+	rubric, err := assess.LoadRubric("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.SchemaVersion != 1 || parsed.Tool.Name != "scrutus" || parsed.Tool.RubricVersion != rubric.Version {
 		t.Errorf("tool block: %+v", parsed.Tool)
 	}
 	if parsed.Backend.Model != "jev-1.13.0" {
@@ -482,6 +491,61 @@ func TestBaselineSilencesThenSurfacesAgain(t *testing.T) {
 	}
 	if report.Run.Baselined == 0 {
 		t.Error("baselined findings were not counted")
+	}
+}
+
+func TestEveryDocblockTagIsGradedOnItsOwnLines(t *testing.T) {
+	dir := t.TempDir()
+	const ledger = `<?php
+
+class Ledger
+{
+    /**
+     * Settles the invoice against the ledger.
+     *
+     * @param int $id
+     * @return string the reference in lowercase
+     */
+    public function settle(int $id): string
+    {
+        return strtoupper((string) $id);
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "Ledger.php"), []byte(ledger), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assessor, server := stubAssessorFrom(t, "docblock.json")
+	report, err := scrutus.Run(context.Background(), scrutus.Options{
+		Mode:     scrutus.ModeCheck,
+		Paths:    []string{dir},
+		Format:   "json",
+		NoCache:  true,
+		NoDotenv: true,
+		Assessor: assessor,
+		Out:      &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	want := map[string]string{
+		"Settles the invoice":                       "",
+		"@param int $id":                            core.RuleRedundantAnnotation,
+		"@return string the reference in lowercase": core.RuleWrongComment,
+	}
+	for fragment, rule := range want {
+		result, ok := find(report.Results, fragment)
+		if !ok {
+			t.Errorf("%q was not scored", fragment)
+			continue
+		}
+		if result.Rule != rule {
+			t.Errorf("%q: rule %q, want %q", fragment, result.Rule, rule)
+		}
+	}
+	if server.Requests() != 1 {
+		t.Errorf("%d requests, want the docblock's one", server.Requests())
 	}
 }
 

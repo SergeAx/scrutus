@@ -1,14 +1,19 @@
 package jev_test
 
 import (
+	"context"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
 	"testing"
 
+	typesafe "serge.ax/go/typesafe-sdk-go"
+
 	"github.com/SergeAx/scrutus/internal/assess"
 	"github.com/SergeAx/scrutus/internal/assess/jev"
 	"github.com/SergeAx/scrutus/internal/core"
+	"github.com/SergeAx/scrutus/internal/jevstub"
 )
 
 // Requests from a run over a PHP codebase: the bytes of their state, what
@@ -39,11 +44,11 @@ func TestEstimateTracksWhatJevBilled(t *testing.T) {
 			}
 		} else {
 			if b.prose > 0 {
-				findings = append(findings, core.Finding{ID: "prose", Block: "b", CommentText: comment})
+				findings = append(findings, core.Finding{ID: "prose", Block: "b", BlockText: comment})
 			}
 			for i := range b.tags {
 				slot := "a" + strconv.Itoa(i+1)
-				findings = append(findings, core.Finding{ID: slot, Block: "b", CommentText: comment, Slot: slot})
+				findings = append(findings, core.Finding{ID: slot, Block: "b", BlockText: comment, Slot: slot})
 			}
 		}
 
@@ -51,5 +56,40 @@ func TestEstimateTracksWhatJevBilled(t *testing.T) {
 		if miss := math.Abs(float64(got-b.tokens)) / float64(b.tokens); miss > 0.1 {
 			t.Errorf("%+v: estimated %d tokens, %.0f%% off", b, got, 100*miss)
 		}
+	}
+}
+
+func TestALargeBlockIsSplitAcrossRequests(t *testing.T) {
+	server := jevstub.New(jevstub.Fixtures{})
+	t.Cleanup(server.Close)
+	client, err := typesafe.New(
+		typesafe.WithAPIKey("test-key"),
+		typesafe.WithBaseURL(server.URL),
+		typesafe.WithLogger(slog.New(slog.DiscardHandler)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rubric, err := assess.LoadRubric("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const tags = 200
+	var findings []core.Finding
+	for i := range tags {
+		slot := "a" + strconv.Itoa(i+1)
+		findings = append(findings, core.Finding{ID: slot, Block: "b", BlockText: "/** @property int $id */", Slot: slot})
+	}
+	verdicts, err := jev.New(client, rubric, 4, 0).Assess(context.Background(), findings)
+	if err != nil {
+		t.Fatalf("assess: %v", err)
+	}
+
+	if len(verdicts) != tags {
+		t.Errorf("%d verdicts, want %d", len(verdicts), tags)
+	}
+	if server.Requests() < 2 {
+		t.Errorf("%d request for %d tags, want the block split", server.Requests(), tags)
 	}
 }

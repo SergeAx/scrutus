@@ -274,7 +274,7 @@ One `*typesafe.Client` serves the whole worker pool: it is immutable after `New`
 `r` is the rubric, read from `internal/assess/rubric_default.toml` or from the file named by `rubric`. A custom rubric may reword anything but must keep exactly four levels per axis, so thresholds stay comparable.
 
 ```toml
-rubric_version = 1
+rubric_version = 2
 
 [accuracy]
 instructions = """
@@ -322,7 +322,7 @@ Here Accuracy should land around "Materially misleading" (the lowercase claim is
 
 Levels are written as situations, not degrees, which is TypeSafe's own guidance for calibrated Score answers. The Noul question returns a single calibrated probability and is used only as a guard in classification, never as a score shown to the user.
 
-In a grouped request the annotation lines of the docblock are marked in the state (`>>> A1`, `>>> A2`, …) and the `typesafe.Questions` keys carry the same slot (`accuracy.a1`, `usefulness.a1`, `overreach.a1`), each set of instructions naming its slot. Verdicts are still cached per finding ID, so a block whose findings are partly cached is requested for the missing slots only.
+In a grouped request the state shows the whole docblock with each tag's lines between `>>> A1` and `<<< A1` marker lines (`A2`, … for the next ones), and the `typesafe.Questions` keys carry the same slot (`accuracy.a1`, `usefulness.a1`, `overreach.a1`), each set of instructions naming its markers; the docblock's own questions answer about the text outside them. A block whose questions would take a request past 32 000 estimated tokens, half of Jev's input limit, is split across several requests that each repeat the docblock. Verdicts are still cached per finding ID, so a block whose findings are partly cached is requested for the missing slots only.
 
 ### 5.2 Response handling
 
@@ -426,7 +426,7 @@ Every reporter consumes the same `[]Result` and `RunInfo`; the JSON schema is th
 ```json
 {
   "schema_version": 1,
-  "tool": {"name": "scrutus", "version": "0.1.0", "rubric_version": 1},
+  "tool": {"name": "scrutus", "version": "0.1.0", "rubric_version": 2},
   "backend": {"name": "jev", "model": "jev-1.13.0"},
   "run": {"mode": "check", "scope": "changed", "base": "origin/main",
           "files": 12, "comments": 87,

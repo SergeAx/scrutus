@@ -3,6 +3,7 @@
 package assess
 
 import (
+	"cmp"
 	"context"
 	_ "embed"
 	"fmt"
@@ -85,7 +86,7 @@ func State(f core.Finding) string {
 		b.WriteString("\n<<< CODE")
 	}
 	b.WriteString("\n--- COMMENT ---\n")
-	b.WriteString(strings.TrimRight(f.CommentText, "\n"))
+	b.WriteString(strings.TrimRight(cmp.Or(f.BlockText, f.CommentText), "\n"))
 	b.WriteString("\n")
 	return b.String()
 }

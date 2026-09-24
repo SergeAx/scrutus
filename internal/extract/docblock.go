@@ -17,12 +17,18 @@ func SplitDocblock(base core.Finding, text string) []core.Finding {
 	start := base.Comment.Start
 	blockKey := base.File + ":" + strconv.Itoa(start)
 
+	blockText := ""
+	if len(tags) > 0 {
+		blockText = marked(text, tags)
+	}
+
 	var out []core.Finding
 	if strings.TrimSpace(strings.Trim(prose, "/* \t\n")) != "" {
 		summary := base
 		summary.CommentText = prose
 		summary.Comment = core.Span{Start: start, End: start + proseEnd}
 		summary.Block = blockKey
+		summary.BlockText = blockText
 		out = append(out, summary)
 	}
 	for i, t := range tags {
@@ -32,11 +38,35 @@ func SplitDocblock(base core.Finding, text string) []core.Finding {
 		tag.Comment = core.Span{Start: start + t.offset, End: start + t.offset + len(t.text)}
 		tag.Line = base.Line + t.lineOffset
 		tag.Block = blockKey
-		tag.Slot = "a" + strconv.Itoa(i+1)
+		tag.BlockText = blockText
+		tag.Slot = slot(i)
 		tag.Protected = false
 		out = append(out, tag)
 	}
 	return out
+}
+
+func slot(i int) string { return "a" + strconv.Itoa(i+1) }
+
+// marked encloses each tag's lines in its slot markers.
+func marked(text string, tags []tag) string {
+	opens, closes := map[int]string{}, map[int]string{}
+	for i, t := range tags {
+		opening, closing := core.SlotMarkers(slot(i))
+		opens[t.lineOffset] = opening
+		closes[t.lineOffset+strings.Count(t.text, "\n")] = closing
+	}
+	var lines []string
+	for i, line := range strings.Split(text, "\n") {
+		if opening, ok := opens[i]; ok {
+			lines = append(lines, opening)
+		}
+		lines = append(lines, line)
+		if closing, ok := closes[i]; ok {
+			lines = append(lines, closing)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 type tag struct {

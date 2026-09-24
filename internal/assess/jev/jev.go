@@ -47,14 +47,14 @@ func (a *Assessor) Requests() int { return int(a.requests.Load()) }
 var ErrBudget = errors.New("budget exceeded")
 
 func (a *Assessor) Assess(ctx context.Context, findings []core.Finding) ([]core.Verdict, error) {
-	blocks := group(findings)
-	verdicts := make([][]core.Verdict, len(blocks))
+	batches := requests(findings, a.rubric)
+	verdicts := make([][]core.Verdict, len(batches))
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(a.concurrency)
-	for i, blockFindings := range blocks {
+	for i, batch := range batches {
 		g.Go(func() error {
-			got, err := a.assessBlock(ctx, blockFindings)
+			got, err := a.assessBlock(ctx, batch.findings)
 			if err != nil {
 				return err
 			}
@@ -75,30 +75,66 @@ func (a *Assessor) Assess(ctx context.Context, findings []core.Finding) ([]core.
 
 // Jev bills about a token per 3.6 bytes of state and question text, plus about
 // 250 a request for its own framing: fitted on the 5 800 requests of one run,
-// to within 2% a request on average.
+// to within 2% a request on average. maxRequestTokens stays well inside its
+// input limit, which a model docblock of 188 tags came within 3% of.
 const (
 	bytesPerToken    = 3.6
 	tokensPerRequest = 250
+	maxRequestTokens = 32_000
 )
+
+func tokens(size int) int { return int(float64(size)/bytesPerToken) + tokensPerRequest }
 
 // EstimateTokens predicts the input tokens Assess will be billed for the
 // findings, so a run can refuse before spending.
 func EstimateTokens(findings []core.Finding, rubric assess.Rubric) int {
-	tokens := 0
-	for _, block := range group(findings) {
-		asked := map[string]int{}
-		for _, f := range block {
-			for _, q := range questionsFor(rubric, f) {
-				asked[q.name] = len(q.instructions) + len(strings.Join(q.criteria, ""))
-			}
-		}
-		size := len(assess.State(block[0]))
-		for _, n := range asked {
-			size += n
-		}
-		tokens += int(float64(size)/bytesPerToken) + tokensPerRequest
+	total := 0
+	for _, r := range requests(findings, rubric) {
+		total += tokens(r.size)
 	}
-	return tokens
+	return total
+}
+
+// request is a batch of findings sent as one, and the bytes of state and
+// question text Jev bills it by.
+type request struct {
+	findings []core.Finding
+	size     int
+	asked    map[string]bool
+}
+
+// requests lays findings out as Assess sends them: a request per block, and a
+// block too large for one split across several that each repeat its state.
+func requests(findings []core.Finding, rubric assess.Rubric) []request {
+	var out []request
+	for _, block := range group(findings) {
+		state := len(assess.State(block[0]))
+		r := request{size: state, asked: map[string]bool{}}
+		for _, f := range block {
+			if len(r.findings) > 0 && tokens(r.size+r.growth(rubric, f)) > maxRequestTokens {
+				out = append(out, r)
+				r = request{size: state, asked: map[string]bool{}}
+			}
+			r.size += r.growth(rubric, f)
+			for _, q := range questionsFor(rubric, f) {
+				r.asked[q.name] = true
+			}
+			r.findings = append(r.findings, f)
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// growth is the question text f adds; findings sharing an ID share questions.
+func (r request) growth(rubric assess.Rubric, f core.Finding) int {
+	size := 0
+	for _, q := range questionsFor(rubric, f) {
+		if !r.asked[q.name] {
+			size += len(q.instructions) + len(strings.Join(q.criteria, ""))
+		}
+	}
+	return size
 }
 
 // question is one of the three a finding is asked; criteria is nil for the
@@ -115,9 +151,9 @@ func questionsFor(rubric assess.Rubric, f core.Finding) []question {
 		suffix = "." + f.Slot
 	}
 	return []question{
-		{"accuracy" + suffix, instructions(rubric.Accuracy.Instructions, f.Slot), rubric.Accuracy.Criteria},
-		{"usefulness" + suffix, instructions(rubric.Usefulness.Instructions, f.Slot), rubric.Usefulness.Criteria},
-		{"overreach" + suffix, instructions(rubric.Overreach.Instructions, f.Slot), nil},
+		{"accuracy" + suffix, instructions(rubric.Accuracy.Instructions, f), rubric.Accuracy.Criteria},
+		{"usefulness" + suffix, instructions(rubric.Usefulness.Instructions, f), rubric.Usefulness.Criteria},
+		{"overreach" + suffix, instructions(rubric.Overreach.Instructions, f), nil},
 	}
 }
 
@@ -201,26 +237,18 @@ func (a *Assessor) assessBlock(ctx context.Context, findings []core.Finding) ([]
 	return out, nil
 }
 
-// instructions names the marked slot for an annotation question, so one
-// request can ask about several marked lines in the same state.
-func instructions(base, slot string) string {
-	if slot == "" {
-		return base
+// instructions narrows a question in a grouped request to its own lines of the
+// block, so one state serves the docblock's prose and every tag in it.
+func instructions(base string, f core.Finding) string {
+	switch {
+	case f.Slot != "":
+		opening, closing := core.SlotMarkers(f.Slot)
+		return fmt.Sprintf("%s\nAnswer only about the lines between %s and %s in the COMMENT block.",
+			base, opening, closing)
+	case f.BlockText != "":
+		return base + "\nAnswer only about the COMMENT text outside the marked lines."
 	}
-	return fmt.Sprintf("%s\nAnswer only about the line marked %s in the COMMENT block.",
-		base, slotMarker(slot))
-}
-
-func slotMarker(slot string) string { return ">>> " + upper(slot) }
-
-func upper(s string) string {
-	out := []rune(s)
-	for i, r := range out {
-		if r >= 'a' && r <= 'z' {
-			out[i] = r - 32
-		}
-	}
-	return string(out)
+	return base
 }
 
 func missing(f core.Finding, question, requestID string) error {

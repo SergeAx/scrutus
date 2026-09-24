@@ -1,0 +1,26 @@
+{
+  "model": "jev-1.13.0",
+  "input_tokens": 600,
+  "default": {
+    "accuracy": 2.7,
+    "usefulness": 2.4,
+    "overreach": 0.05,
+    "confidence": 0.93
+  },
+  "verdicts": [
+    {
+      "match": "@param int $id",
+      "accuracy": 3,
+      "usefulness": 0.1,
+      "overreach": 0.02,
+      "confidence": 0.95
+    },
+    {
+      "match": "@return string the reference in lowercase",
+      "accuracy": 0.1,
+      "usefulness": 1.8,
+      "overreach": 0.03,
+      "confidence": 0.96
+    }
+  ]
+}

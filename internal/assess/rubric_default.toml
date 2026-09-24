@@ -1,4 +1,4 @@
-rubric_version = 1
+rubric_version = 2
 
 [accuracy]
 instructions = """

@@ -40,4 +40,7 @@ func TestSplitDocblockKeepsATagsContinuationLines(t *testing.T) {
 	if strings.Contains(got[0].CommentText, "fields off") {
 		t.Errorf("the prose took the tag's continuation: %q", got[0].CommentText)
 	}
+	if !strings.Contains(got[1].BlockText, ">>> A1\n * "+want[1]+"\n<<< A1\n") {
+		t.Errorf("block text does not enclose the tag whole:\n%s", got[1].BlockText)
+	}
 }

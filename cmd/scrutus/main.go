@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	typesafe "serge.ax/go/typesafe-sdk-go"
 
+	"github.com/SergeAx/scrutus/internal/assess"
 	"github.com/SergeAx/scrutus/internal/cache"
 	"github.com/SergeAx/scrutus/internal/config"
 	"github.com/SergeAx/scrutus/internal/core"
@@ -225,9 +226,14 @@ func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version, build, rubric version, model and compiled languages",
-		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "scrutus %s\nbuild %s\nrubric 1\nmodel %s\nlanguages %s\n",
-				scrutus.Version, build(), typesafe.DefaultModel, strings.Join(extract.Languages(), ", "))
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			rubric, err := assess.LoadRubric("default")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "scrutus %s\nbuild %s\nrubric %d\nmodel %s\nlanguages %s\n",
+				scrutus.Version, build(), rubric.Version, typesafe.DefaultModel, strings.Join(extract.Languages(), ", "))
+			return nil
 		},
 	}
 }

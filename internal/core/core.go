@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strconv"
+	"strings"
 )
 
 type Kind string
@@ -38,6 +39,9 @@ type Finding struct {
 	// annotation lines).
 	Block string
 	Slot  string
+	// BlockText is the whole block with every slot between its markers, the
+	// comment a grouped request shows; empty when the block has no slots.
+	BlockText string
 
 	// Protected marks a comment the keep_* settings shield from deletion: an
 	// exported Go doc comment, a PHP docblock or a Python docstring.
@@ -45,6 +49,13 @@ type Finding struct {
 	// Required marks a comment the code cannot parse without, such as a
 	// docstring that is its body's only statement.
 	Required bool
+}
+
+// SlotMarkers are the lines around a slot in BlockText, which the questions
+// about that slot name.
+func SlotMarkers(slot string) (opening, closing string) {
+	slot = strings.ToUpper(slot)
+	return ">>> " + slot, "<<< " + slot
 }
 
 // NewID hashes what a verdict actually depends on, so moving code between

@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/SergeAx/scrutus/internal/core"
 )
 
 type Recorded struct {
@@ -66,16 +68,16 @@ func New(fixtures Fixtures) *Server {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		recorded := fixtures.match(comment(req.State))
-
 		answers := map[string]any{}
 		for name := range req.Questions {
-			switch {
-			case strings.HasPrefix(name, "accuracy"):
+			axis, slot, _ := strings.Cut(name, ".")
+			recorded := fixtures.match(section(comment(req.State), slot))
+			switch axis {
+			case "accuracy":
 				answers[name] = score(recorded.Accuracy, recorded.Confidence, accuracyLegend)
-			case strings.HasPrefix(name, "usefulness"):
+			case "usefulness":
 				answers[name] = score(recorded.Usefulness, recorded.Confidence, usefulnessLegend)
-			case strings.HasPrefix(name, "overreach"):
+			case "overreach":
 				answers[name] = map[string]any{"type": "noul", "noul": recorded.Overreach}
 			}
 		}
@@ -102,6 +104,30 @@ func (f Fixtures) match(commentText string) Recorded {
 		}
 	}
 	return f.Default
+}
+
+// section is what a question in a grouped request is about: the lines between
+// its slot's markers, or for the block's own comment everything outside them.
+func section(comment, slot string) string {
+	opening, _ := core.SlotMarkers(slot)
+	var own, outside []string
+	inside := ""
+	for line := range strings.SplitSeq(comment, "\n") {
+		switch {
+		case inside == "" && strings.HasPrefix(line, ">>> "):
+			inside = line
+		case inside != "" && strings.HasPrefix(line, "<<< "):
+			inside = ""
+		case inside == "":
+			outside = append(outside, line)
+		case inside == opening:
+			own = append(own, line)
+		}
+	}
+	if slot != "" {
+		return strings.Join(own, "\n")
+	}
+	return strings.Join(outside, "\n")
 }
 
 func comment(state string) string {
