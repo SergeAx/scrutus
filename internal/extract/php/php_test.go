@@ -1,6 +1,7 @@
 package php_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -145,6 +146,37 @@ func TestLineAndTrailingComments(t *testing.T) {
 		if !strings.Contains(f.CodeText, tc.codeHas) {
 			t.Errorf("%q: code %q lacks %q", tc.comment, f.CodeText, tc.codeHas)
 		}
+	}
+}
+
+func TestConsecutiveLineCommentsMergeAtOneIndentation(t *testing.T) {
+	const body = `<?php
+
+function settle(int $id)
+{
+    // A paid invoice must never reach the ledger twice,
+    # so the guard runs before anything is loaded.
+    $invoice = load($id);
+    $total = 3; // the retry budget
+    // is checked by the caller
+    return $invoice;
+}
+`
+	got, err := extract.Extract("settle.php", []byte(body), []string{"php"}, extract.Options{ContextLines: 20, MaxCodeLines: 40})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	var comments []string
+	for _, f := range got {
+		comments = append(comments, f.CommentText)
+	}
+	want := []string{
+		"// A paid invoice must never reach the ledger twice,\n    # so the guard runs before anything is loaded.",
+		"// the retry budget",
+		"// is checked by the caller",
+	}
+	if !slices.Equal(comments, want) {
+		t.Errorf("comments = %q, want %q", comments, want)
 	}
 }
 

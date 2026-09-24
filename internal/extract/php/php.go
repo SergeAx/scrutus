@@ -3,6 +3,7 @@
 package php
 
 import (
+	"bytes"
 	"cmp"
 	"reflect"
 	"slices"
@@ -32,10 +33,13 @@ func byStart(a, b span) int { return cmp.Compare(a.start, b.start) }
 
 type comment struct {
 	span
-	text   string
-	isDoc  bool
-	column int
+	text    string
+	isDoc   bool
+	column  int
+	ownLine bool // nothing but indentation before it on its line
 }
+
+func (c comment) isLine() bool { return !strings.HasPrefix(c.text, "/*") }
 
 type walker struct {
 	src        []byte
@@ -84,7 +88,7 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 	w.stripped = extract.Strip(src, cuts)
 
 	var findings []core.Finding
-	for _, c := range w.comments {
+	for _, c := range w.groups() {
 		findings = append(findings, w.pair(name, c)...)
 	}
 	return findings, nil
@@ -151,14 +155,16 @@ func (w *walker) collectTokens(tok *token.Token) {
 		if free.Position == nil {
 			continue
 		}
+		start := free.Position.StartPos
 		text := strings.TrimRight(string(free.Value), " \t\r\n")
 		w.comments = append(w.comments, comment{
-			start:  free.Position.StartPos,
-			end:    free.Position.StartPos + len(text),
-			line:   free.Position.StartLine,
-			text:   text,
-			isDoc:  free.ID == token.T_DOC_COMMENT,
-			column: w.column(free.Position.StartPos),
+			start:   start,
+			end:     start + len(text),
+			line:    free.Position.StartLine,
+			text:    text,
+			isDoc:   free.ID == token.T_DOC_COMMENT,
+			column:  w.column(start),
+			ownLine: len(bytes.TrimSpace(w.src[w.lineStarts[w.line(start)-1]:start])) == 0,
 		})
 	}
 }
@@ -193,6 +199,26 @@ func (w *walker) recordStatements(stmts reflect.Value) {
 			w.statements = append(w.statements, span{start: pos.StartPos, end: pos.EndPos, line: pos.StartLine})
 		}
 	}
+}
+
+// groups merges consecutive line comments alone on their lines at one
+// indentation, as the tree-sitter walker does, so a comment wrapped over
+// several lines is judged whole.
+func (w *walker) groups() []comment {
+	var out []comment
+	for _, c := range w.comments {
+		if n := len(out); n > 0 {
+			last := &out[n-1]
+			if last.isLine() && c.isLine() && last.ownLine && c.ownLine &&
+				w.line(c.start) == w.line(last.end-1)+1 && c.column == last.column {
+				last.end = c.end
+				last.text = string(w.src[last.start:last.end])
+				continue
+			}
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // pair applies the rules of §4.3.
