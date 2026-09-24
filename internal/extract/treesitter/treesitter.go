@@ -32,7 +32,10 @@ type grammar struct {
 	itemField map[string]string
 	// headed containers start at their first item rather than at the header
 	// that opens them, so a comment right under the header would fall outside.
-	headed       map[string]bool
+	headed map[string]bool
+	// clauses continue the statement before them, such as `else` or `catch`;
+	// a comment right above one heads that clause.
+	clauses      map[string]bool
 	scopes       map[string]bool
 	documentable func(item *sitter.Node, inFunction bool) bool
 	directive    func(text string) bool
@@ -111,6 +114,7 @@ type comment struct {
 	span
 	ownLine bool // nothing but indentation before it on its line
 	line    bool // a line comment, which merges with the ones right below it
+	clause  span // the clause right below it, if any
 }
 
 type child struct {
@@ -227,11 +231,19 @@ func (w *walker) addComment(n *sitter.Node) {
 	if w.g.directive != nil && w.g.directive(text) {
 		return
 	}
-	w.comments = append(w.comments, comment{
+	c := comment{
 		span:    s,
 		ownLine: len(bytes.TrimSpace(w.src[w.lineStart(s.start):s.start])) == 0,
 		line:    !strings.HasPrefix(text, "/*"),
-	})
+	}
+	next := n.NextNamedSibling()
+	for next != nil && next.Kind() == "comment" {
+		next = next.NextNamedSibling()
+	}
+	if next != nil && w.g.clauses[next.Kind()] {
+		c.clause = spanOf(next)
+	}
+	w.comments = append(w.comments, c)
 }
 
 func (w *walker) findings(file string) []core.Finding {
@@ -300,6 +312,7 @@ func (w *walker) groups() []comment {
 			if last.line && c.line && last.ownLine && c.ownLine &&
 				w.line(c.start) == w.line(last.end-1)+1 && w.column(c.start) == w.column(last.start) {
 				last.end = c.end
+				last.clause = c.clause
 				continue
 			}
 		}
@@ -332,6 +345,9 @@ func (w *walker) pair(file string, c comment) []core.Finding {
 }
 
 func (w *walker) code(c comment) (core.Kind, span, bool) {
+	if c.ownLine && c.clause.end > c.clause.start {
+		return core.KindInline, c.clause, true
+	}
 	box := w.innermost(c.span)
 	if c.ownLine {
 		if next, ok := box.after(c.end); ok && next.doc && w.adjacent(c.end, next.start) {

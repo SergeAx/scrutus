@@ -61,6 +61,7 @@ type walker struct {
 	stripped   *extract.Stripped
 	containers []container
 	decls      []span // what a docblock can document
+	clauses    []span // what continues the statement before it: else, catch, finally
 	outer      []int  // index of the declaration around each one, or -1
 	seen       map[*token.Token]bool
 	options    extract.Options
@@ -87,6 +88,7 @@ func (Extractor) Extract(name string, src []byte, opts extract.Options) ([]core.
 	w.walk(reflect.ValueOf(root))
 	slices.SortFunc(w.comments, func(a, b comment) int { return byStart(a.span, b.span) })
 	slices.SortFunc(w.decls, byStart)
+	slices.SortFunc(w.clauses, byStart)
 	w.outer = nest(len(w.decls), func(i int) span { return w.decls[i] })
 	// Of two containers starting together the outer one sorts first, so it
 	// is the one nest finds open.
@@ -296,7 +298,12 @@ func (w *walker) record(node ast.Vertex) {
 	if documentable[name] {
 		w.decls = append(w.decls, span{start: pos.StartPos, end: pos.EndPos, line: pos.StartLine})
 	}
+	if clauses[name] {
+		w.clauses = append(w.clauses, span{start: pos.StartPos, end: pos.EndPos, line: pos.StartLine})
+	}
 }
+
+var clauses = map[string]bool{"StmtElseIf": true, "StmtElse": true, "StmtCatch": true, "StmtFinally": true}
 
 // groups merges consecutive line comments alone on their lines at one
 // indentation, as the tree-sitter walker does, so a comment wrapped over
@@ -345,6 +352,9 @@ func (w *walker) pair(file string, c comment) []core.Finding {
 }
 
 func (w *walker) code(c comment) (core.Kind, span, bool) {
+	if clause, ok := w.clauseBelow(c); ok {
+		return core.KindInline, clause, true
+	}
 	box := w.innermost(c.span)
 	// A docblock documents whatever comes next. Inside a method body that is a
 	// statement, not the next declaration: `/** @var Foo $bar */` over a local
@@ -381,6 +391,16 @@ func (w *walker) code(c comment) (core.Kind, span, bool) {
 		}
 	}
 	return "", span{}, false
+}
+
+// clauseBelow is the else, catch or finally clause right under a comment of
+// its own, which heads that clause rather than the whole statement.
+func (w *walker) clauseBelow(c comment) (span, bool) {
+	i := seek(w.clauses, c.end)
+	if !c.ownLine || i == len(w.clauses) || len(bytes.TrimSpace(w.src[c.end:w.clauses[i].start])) > 0 {
+		return span{}, false
+	}
+	return w.clauses[i], true
 }
 
 func inside(c comment) core.Kind {

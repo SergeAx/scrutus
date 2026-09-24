@@ -181,3 +181,44 @@ func keys(m map[string]core.Finding) []string {
 	}
 	return out
 }
+
+func TestPythonCommentAboveAClausePairsWithIt(t *testing.T) {
+	got, err := extract.Extract("route.py", []byte(`def route(visible, menu):
+    if visible:
+        close()
+    # Opens the menu when it is hidden.
+    elif menu:
+        open_menu()
+    # Falls back to the default layout.
+    else:
+        reset()
+
+    try:
+        load()
+    # A missing cache is not an error.
+    except CacheMiss:
+        warm()
+    # Releases the lock either way.
+    finally:
+        unlock()
+`), []string{"python"}, extract.Options{ContextLines: 20, MaxCodeLines: 40})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	all := map[string]core.Finding{}
+	for _, f := range got {
+		all[f.CommentText] = f
+	}
+	cases := []struct{ comment, codeHas, codeNot string }{
+		{"# Opens the menu when it is hidden.", "elif menu:", "close()"},
+		{"# Falls back to the default layout.", "reset()", "open_menu()"},
+		{"# A missing cache is not an error.", "except CacheMiss:", "load()"},
+		{"# Releases the lock either way.", "unlock()", "warm()"},
+	}
+	for _, tc := range cases {
+		f := all[tc.comment]
+		if f.Kind != core.KindInline || !strings.Contains(f.CodeText, tc.codeHas) || strings.Contains(f.CodeText, tc.codeNot) {
+			t.Errorf("%q: %s %q, want inline with %q and without %q", tc.comment, f.Kind, f.CodeText, tc.codeHas, tc.codeNot)
+		}
+	}
+}

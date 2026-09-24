@@ -215,3 +215,39 @@ func TestSyntaxErrorIsAnError(t *testing.T) {
 		t.Errorf("err = %v, want a syntax error naming line 1", err)
 	}
 }
+
+func TestCommentAboveAClausePairsWithIt(t *testing.T) {
+	all := extractFrom(t, "route.js", `function route(visible, menu) {
+  if (visible) {
+    close();
+  }
+  // Opens the menu when it is hidden.
+  else if (menu) {
+    open();
+  }
+
+  try {
+    load();
+  }
+  // A missing cache is not an error.
+  catch (e) {
+    warm();
+  }
+  // Releases the lock either way.
+  finally {
+    unlock();
+  }
+}
+`)
+	cases := []struct{ comment, codeHas, codeNot string }{
+		{"// Opens the menu when it is hidden.", "else if (menu)", "close()"},
+		{"// A missing cache is not an error.", "catch (e)", "load()"},
+		{"// Releases the lock either way.", "unlock()", "warm()"},
+	}
+	for _, tc := range cases {
+		f := all[tc.comment]
+		if f.Kind != core.KindInline || !strings.Contains(f.CodeText, tc.codeHas) || strings.Contains(f.CodeText, tc.codeNot) {
+			t.Errorf("%q: %s %q, want inline with %q and without %q", tc.comment, f.Kind, f.CodeText, tc.codeHas, tc.codeNot)
+		}
+	}
+}

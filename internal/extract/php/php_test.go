@@ -369,3 +369,40 @@ function move(array $codes): void
 		{"// $table->dropForeign('users_role_id_foreign');", core.KindInline, "function (Blueprint $table)", "report"},
 	})
 }
+
+func TestCommentAboveAClausePairsWithIt(t *testing.T) {
+	checkPairings(t, extractPHP(t, `<?php
+
+function route(bool $visible, bool $menu): void
+{
+    if ($visible) {
+        close();
+    }
+    // Opens the menu when it is hidden.
+    elseif ($menu) {
+        open();
+    }
+    // Falls back to the default layout.
+    else {
+        reset();
+    }
+
+    try {
+        load();
+    }
+    // A missing cache is not an error.
+    catch (CacheMiss $e) {
+        warm();
+    }
+    // Releases the lock either way.
+    finally {
+        unlock();
+    }
+}
+`), []pairing{
+		{"// Opens the menu when it is hidden.", core.KindInline, "elseif ($menu)", "close()"},
+		{"// Falls back to the default layout.", core.KindInline, "reset()", "open()"},
+		{"// A missing cache is not an error.", core.KindInline, "catch (CacheMiss $e)", "load()"},
+		{"// Releases the lock either way.", core.KindInline, "unlock()", "warm()"},
+	})
+}

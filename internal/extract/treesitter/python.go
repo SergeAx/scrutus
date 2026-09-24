@@ -22,6 +22,7 @@ var pythonGrammar = grammar{
 	truncation: "# ... truncated by scrutus",
 	containers: set("module", "block", "dictionary", "list", "set", "argument_list", "parameters"),
 	headed:     set("block"),
+	clauses:    set("elif_clause", "else_clause", "except_clause", "except_group_clause", "finally_clause"),
 	scopes:     set("function_definition"),
 	docstring:  pythonDocstring,
 }

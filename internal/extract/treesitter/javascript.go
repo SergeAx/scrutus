@@ -30,6 +30,7 @@ var javascriptGrammar = grammar{
 	truncation:   "// ... truncated by scrutus",
 	containers:   jsContainers,
 	itemField:    jsItemFields,
+	clauses:      jsClauses,
 	scopes:       jsScopes,
 	documentable: jsDocumentable,
 	directive:    tripleSlash.MatchString,
@@ -47,6 +48,7 @@ var typescriptGrammar = grammar{
 	truncation:   "// ... truncated by scrutus",
 	containers:   jsContainers,
 	itemField:    jsItemFields,
+	clauses:      jsClauses,
 	scopes:       jsScopes,
 	documentable: jsDocumentable,
 	directive:    tripleSlash.MatchString,
@@ -59,6 +61,8 @@ var jsContainers = set(
 )
 
 var jsItemFields = map[string]string{"switch_case": "body", "switch_default": "body"}
+
+var jsClauses = set("else_clause", "catch_clause", "finally_clause")
 
 var jsScopes = set(
 	"function_declaration", "generator_function_declaration", "function_expression", "function",
